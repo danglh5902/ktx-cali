@@ -12,6 +12,8 @@ function toDto(roomType: RoomTypeRow) {
     name: roomType.name,
     capacity: roomType.capacity,
     basePrice: serializeVnd(roomType.basePrice),
+    bunkLowerPrice: serializeVnd(roomType.bunkLowerPrice),
+    bunkUpperPrice: serializeVnd(roomType.bunkUpperPrice),
     wholeRoomPrice: serializeVnd(roomType.wholeRoomPrice),
     defaultAmenities: roomType.defaultAmenities,
     description: roomType.description,

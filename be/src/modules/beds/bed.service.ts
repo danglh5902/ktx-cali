@@ -7,8 +7,35 @@ import type {
 import { withRequestContext } from "../../core/db/request-context.js";
 import { writeAudit } from "../../core/audit/audit-log.js";
 import { ConflictError, NotFoundError } from "../../core/errors/app-error.js";
-import { roomRepository } from "../rooms/room.repository.js";
+import { roomRepository, type RoomRow } from "../rooms/room.repository.js";
+import { roomTypeRepository, type RoomTypeRow } from "../room-types/room-type.repository.js";
+import { resolveBedPrice } from "./bed-price.js";
 import { bedRepository, type BedRow } from "./bed.repository.js";
+import type { Tx } from "../../core/db/request-context.js";
+
+export interface BedWithPrice extends BedRow {
+  effectivePrice: bigint | null;
+}
+
+/**
+ * Gắn giá hiệu lực cho danh sách giường — tải trước room/roomType theo
+ * branch 1 lần (thay vì N+1 theo từng giường) rồi tra map, vì sơ đồ giường
+ * luôn hiển thị cả chi nhánh cùng lúc.
+ */
+async function attachEffectivePrice(tx: Tx, branchId: string, beds: BedRow[]): Promise<BedWithPrice[]> {
+  const [rooms, roomTypes] = await Promise.all([
+    roomRepository.findMany(tx, { branchId }),
+    roomTypeRepository.findMany(tx, branchId),
+  ]);
+  const roomById = new Map<string, RoomRow>(rooms.map((r) => [r.id, r]));
+  const roomTypeById = new Map<string, RoomTypeRow>(roomTypes.map((rt) => [rt.id, rt]));
+
+  return beds.map((bed) => {
+    const room = roomById.get(bed.roomId) ?? null;
+    const roomType = room?.roomTypeId ? (roomTypeById.get(room.roomTypeId) ?? null) : null;
+    return { ...bed, effectivePrice: resolveBedPrice(bed, room, roomType) };
+  });
+}
 
 /**
  * Máy trạng thái giường — docs/03-org-model.md §3.1: "không cho nhảy tùy ý".
@@ -29,14 +56,22 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 };
 
 export const bedService = {
-  async list(ctx: RequestContext, filter: { branchId?: string; roomId?: string }): Promise<BedRow[]> {
-    return withRequestContext(ctx, (tx) => bedRepository.findMany(tx, filter));
+  async list(ctx: RequestContext, filter: { branchId?: string; roomId?: string }): Promise<BedWithPrice[]> {
+    return withRequestContext(ctx, async (tx) => {
+      const beds = await bedRepository.findMany(tx, filter);
+      const branchId = filter.branchId ?? beds[0]?.branchId;
+      if (!branchId) return beds.map((bed) => ({ ...bed, effectivePrice: bed.priceOverride }));
+      return attachEffectivePrice(tx, branchId, beds);
+    });
   },
 
-  async getById(ctx: RequestContext, id: string): Promise<BedRow> {
-    const row = await withRequestContext(ctx, (tx) => bedRepository.findById(tx, id));
-    if (!row) throw new NotFoundError("Bed");
-    return row;
+  async getById(ctx: RequestContext, id: string): Promise<BedWithPrice> {
+    return withRequestContext(ctx, async (tx) => {
+      const row = await bedRepository.findById(tx, id);
+      if (!row) throw new NotFoundError("Bed");
+      const [withPrice] = await attachEffectivePrice(tx, row.branchId, [row]);
+      return withPrice!;
+    });
   },
 
   async create(ctx: RequestContext, input: CreateBedInput): Promise<BedRow> {
@@ -66,11 +101,10 @@ export const bedService = {
   async bulkCreate(ctx: RequestContext, input: BulkCreateBedsInput): Promise<BedRow[]> {
     return withRequestContext(ctx, async (tx) => {
       const created: BedRow[] = [];
-      for (let n = 1; n <= input.count; n += 1) {
-        const code = `${input.codePrefix}${n}`;
+
+      async function createOne(code: string, bedType: CreateBedInput["bedType"], priceOverride?: string) {
         const existing = await bedRepository.findByCode(tx, input.branchId, code);
         if (existing) throw new ConflictError(`Bed code "${code}" already exists in this branch`);
-
         const bed = await bedRepository.create(
           tx,
           ctx.orgId,
@@ -80,12 +114,27 @@ export const bedService = {
             floorId: input.floorId,
             roomId: input.roomId,
             code,
-            bedType: input.bedType,
+            bedType,
+            priceOverride,
           },
           ctx.userId,
         );
         created.push(bed);
       }
+
+      if (input.bedType === "BUNK_PAIR") {
+        // Mỗi đơn vị = 1 khung giường tầng = 2 giường thật (dưới + trên),
+        // giá khác nhau — xem docs/06-module-property.md §5.1.
+        for (let n = 1; n <= input.count; n += 1) {
+          await createOne(`${input.codePrefix}${n}D`, "BUNK_LOWER", input.lowerPriceOverride);
+          await createOne(`${input.codePrefix}${n}T`, "BUNK_UPPER", input.upperPriceOverride);
+        }
+      } else {
+        for (let n = 1; n <= input.count; n += 1) {
+          await createOne(`${input.codePrefix}${n}`, input.bedType, input.priceOverride);
+        }
+      }
+
       await roomRepository.incrementBedCount(tx, input.roomId, created.length);
 
       await writeAudit(tx, {

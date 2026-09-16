@@ -4,3 +4,7 @@ export * from "./types.js";
 export * from "./schemas/branch.schema.js";
 export * from "./schemas/property.schema.js";
 export * from "./schemas/auth.schema.js";
+export * from "./schemas/customer.schema.js";
+export * from "./schemas/booking.schema.js";
+export * from "./schemas/contract.schema.js";
+export * from "./schemas/billing.schema.js";

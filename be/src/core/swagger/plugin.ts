@@ -31,6 +31,14 @@ export async function registerSwagger(app: FastifyInstance): Promise<void> {
         { name: "room-types", description: "Loại phòng / bảng giá — docs/06-module-property.md §4.3" },
         { name: "rooms", description: "Phòng — docs/06-module-property.md §4" },
         { name: "beds", description: "Giường (đơn vị bán, D1) — docs/06-module-property.md §5" },
+        { name: "customers", description: "Khách thuê — docs/07-module-customers.md" },
+        { name: "bookings", description: "Đặt chỗ / giữ giường tạm thời — docs/08-module-contracts.md §2" },
+        { name: "contracts", description: "Hợp đồng, check-in/check-out — docs/08-module-contracts.md §3-4" },
+        { name: "billing", description: "Kỳ chốt & hóa đơn — docs/09-module-billing.md §2" },
+        { name: "payments", description: "Thanh toán, phân bổ FIFO — docs/09-module-billing.md §4" },
+        { name: "deposits", description: "Sổ cọc & hoàn cọc — docs/09-module-billing.md §6" },
+        { name: "cash-sessions", description: "Ca quỹ tiền mặt — docs/09-module-billing.md §7, D8" },
+        { name: "debts", description: "Báo cáo công nợ (aging) — docs/09-module-billing.md §5.2" },
       ],
       components: {
         securitySchemes: {

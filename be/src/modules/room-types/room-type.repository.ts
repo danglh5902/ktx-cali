@@ -40,6 +40,8 @@ export const roomTypeRepository = {
         name: input.name,
         capacity: input.capacity,
         basePrice: BigInt(input.basePrice),
+        bunkLowerPrice: input.bunkLowerPrice ? BigInt(input.bunkLowerPrice) : undefined,
+        bunkUpperPrice: input.bunkUpperPrice ? BigInt(input.bunkUpperPrice) : undefined,
         wholeRoomPrice: input.wholeRoomPrice ? BigInt(input.wholeRoomPrice) : undefined,
         defaultAmenities: input.defaultAmenities,
         description: input.description,
@@ -57,6 +59,8 @@ export const roomTypeRepository = {
       .set({
         ...input,
         basePrice: input.basePrice !== undefined ? BigInt(input.basePrice) : undefined,
+        bunkLowerPrice: input.bunkLowerPrice !== undefined ? BigInt(input.bunkLowerPrice) : undefined,
+        bunkUpperPrice: input.bunkUpperPrice !== undefined ? BigInt(input.bunkUpperPrice) : undefined,
         wholeRoomPrice: input.wholeRoomPrice !== undefined ? BigInt(input.wholeRoomPrice) : undefined,
         updatedBy: actorId,
         updatedAt: new Date(),

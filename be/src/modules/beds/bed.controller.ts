@@ -6,9 +6,10 @@ import {
 } from "../../shared/index.js";
 import { serializeVnd } from "../../core/money/index.js";
 import type { BedRow } from "./bed.repository.js";
+import type { BedWithPrice } from "./bed.service.js";
 import { bedService } from "./bed.service.js";
 
-function toDto(bed: BedRow) {
+function toDto(bed: BedRow | BedWithPrice) {
   return {
     id: bed.id,
     branchId: bed.branchId,
@@ -19,6 +20,7 @@ function toDto(bed: BedRow) {
     label: bed.label,
     bedType: bed.bedType,
     priceOverride: serializeVnd(bed.priceOverride),
+    effectivePrice: "effectivePrice" in bed ? serializeVnd(bed.effectivePrice) : undefined,
     status: bed.status,
     currentAssignmentId: bed.currentAssignmentId,
     blockedReason: bed.blockedReason,

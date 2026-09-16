@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { isPermission, type Permission, type RequestContext } from "../../shared/index.js";
 import { db } from "../db/client.js";
+import { withTransientRetry } from "../db/transient-retry.js";
 
 export class UserNotProvisionedError extends Error {
   constructor(authUid: string) {
@@ -35,7 +36,7 @@ interface AssignmentRow {
  * core/db/rls/policies.ts.
  */
 export async function loadRequestContext(authUid: string): Promise<RequestContext> {
-  return db.transaction(async (tx) => {
+  return withTransientRetry(() => db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.auth_uid', ${authUid}, true)`);
 
     const userRows = (await tx.execute(
@@ -82,5 +83,5 @@ export async function loadRequestContext(authUid: string): Promise<RequestContex
       scope,
       allowedBranchIds: Array.from(branchIds),
     } satisfies RequestContext;
-  });
+  }));
 }

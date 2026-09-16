@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { RequestContext } from "../../shared/index.js";
 import { db } from "./client.js";
+import { withTransientRetry } from "./transient-retry.js";
 
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -18,12 +19,14 @@ export async function withRequestContext<T>(
   ctx: RequestContext,
   fn: (tx: Tx) => Promise<T>,
 ): Promise<T> {
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT set_config('app.org_id', ${ctx.orgId}, true)`);
-    await tx.execute(sql`SELECT set_config('app.scope', ${ctx.scope}, true)`);
-    await tx.execute(
-      sql`SELECT set_config('app.allowed_branch_ids', ${ctx.allowedBranchIds.join(",")}, true)`,
-    );
-    return fn(tx);
-  });
+  return withTransientRetry(() =>
+    db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.org_id', ${ctx.orgId}, true)`);
+      await tx.execute(sql`SELECT set_config('app.scope', ${ctx.scope}, true)`);
+      await tx.execute(
+        sql`SELECT set_config('app.allowed_branch_ids', ${ctx.allowedBranchIds.join(",")}, true)`,
+      );
+      return fn(tx);
+    }),
+  );
 }

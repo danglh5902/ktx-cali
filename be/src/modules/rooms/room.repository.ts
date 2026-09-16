@@ -46,6 +46,8 @@ export const roomRepository = {
         hasPrivateToilet: input.hasPrivateToilet,
         amenities: input.amenities,
         priceOverride: input.priceOverride ? BigInt(input.priceOverride) : undefined,
+        bunkLowerPriceOverride: input.bunkLowerPriceOverride ? BigInt(input.bunkLowerPriceOverride) : undefined,
+        bunkUpperPriceOverride: input.bunkUpperPriceOverride ? BigInt(input.bunkUpperPriceOverride) : undefined,
         createdBy: actorId,
         updatedBy: actorId,
       })
@@ -65,6 +67,10 @@ export const roomRepository = {
       .set({
         ...input,
         priceOverride: input.priceOverride !== undefined ? BigInt(input.priceOverride) : undefined,
+        bunkLowerPriceOverride:
+          input.bunkLowerPriceOverride !== undefined ? BigInt(input.bunkLowerPriceOverride) : undefined,
+        bunkUpperPriceOverride:
+          input.bunkUpperPriceOverride !== undefined ? BigInt(input.bunkUpperPriceOverride) : undefined,
         updatedBy: actorId,
         updatedAt: new Date(),
       })

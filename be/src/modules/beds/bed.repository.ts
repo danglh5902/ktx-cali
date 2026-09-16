@@ -66,4 +66,20 @@ export const bedRepository = {
       .returning();
     return row ?? null;
   },
+
+  /** Check-in/check-out gọi hàm này để đổi status + gắn/gỡ bed_assignment hiện hành cùng lúc. */
+  async attachAssignment(
+    tx: Tx,
+    id: string,
+    status: BedRow["status"],
+    currentAssignmentId: string | null,
+    actorId: string,
+  ): Promise<BedRow | null> {
+    const [row] = await tx
+      .update(beds)
+      .set({ status, currentAssignmentId, updatedBy: actorId, updatedAt: new Date() })
+      .where(and(eq(beds.id, id), isNull(beds.deletedAt)))
+      .returning();
+    return row ?? null;
+  },
 };

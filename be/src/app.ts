@@ -13,6 +13,14 @@ import { registerFloorRoutes } from "./modules/floors/floor.routes.js";
 import { registerRoomTypeRoutes } from "./modules/room-types/room-type.routes.js";
 import { registerRoomRoutes } from "./modules/rooms/room.routes.js";
 import { registerBedRoutes } from "./modules/beds/bed.routes.js";
+import { registerCustomerRoutes } from "./modules/customers/customer.routes.js";
+import { registerBookingRoutes } from "./modules/bookings/booking.routes.js";
+import { registerContractRoutes } from "./modules/contracts/contract.routes.js";
+import { registerBillingRoutes } from "./modules/billing/billing.routes.js";
+import { registerPaymentRoutes } from "./modules/payments/payment.routes.js";
+import { registerDepositRoutes } from "./modules/deposits/deposit.routes.js";
+import { registerCashSessionRoutes } from "./modules/cash-sessions/cash-session.routes.js";
+import { registerDebtRoutes } from "./modules/debts/debt.routes.js";
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -57,6 +65,14 @@ export function buildApp(): FastifyInstance {
     registerRoomTypeRoutes(instance);
     registerRoomRoutes(instance);
     registerBedRoutes(instance);
+    registerCustomerRoutes(instance);
+    registerBookingRoutes(instance);
+    registerContractRoutes(instance);
+    registerBillingRoutes(instance);
+    registerPaymentRoutes(instance);
+    registerDepositRoutes(instance);
+    registerCashSessionRoutes(instance);
+    registerDebtRoutes(instance);
   });
 
   return app;

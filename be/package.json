@@ -15,7 +15,9 @@
     "db:migrate": "tsx src/core/db/migrate.ts",
     "db:apply-rls": "tsx src/core/db/rls/apply-rls.ts",
     "db:seed": "tsx src/core/db/seed.ts",
-    "db:seed:admin": "tsx src/core/db/seed-admin.ts"
+    "db:seed:admin": "tsx src/core/db/seed-admin.ts",
+    "db:seed:demo": "tsx src/core/db/seed-demo.ts",
+    "db:seed:demo-extra": "tsx src/core/db/seed-demo-extra.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

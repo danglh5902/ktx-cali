@@ -18,6 +18,8 @@ function toDto(room: RoomRow) {
     hasPrivateToilet: room.hasPrivateToilet,
     amenities: room.amenities,
     priceOverride: serializeVnd(room.priceOverride),
+    bunkLowerPriceOverride: serializeVnd(room.bunkLowerPriceOverride),
+    bunkUpperPriceOverride: serializeVnd(room.bunkUpperPriceOverride),
     status: room.status,
   };
 }

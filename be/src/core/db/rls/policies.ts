@@ -99,23 +99,43 @@ export const BRANCH_ONLY_TABLES: string[] = ["ticket_events", "asset_events"];
  */
 export const UNSCOPED_TABLES: string[] = ["idempotency_keys", "counters"];
 
+/**
+ * Reads a session GUC as `NULL` when unset — safe for casting to `uuid`.
+ *
+ * `current_setting(name, true)` returns NULL only the first time a custom
+ * GUC is ever touched on a connection; once `set_config(name, val, true)`
+ * (LOCAL) has run in ANY earlier transaction on that same physical
+ * connection, Postgres keeps the GUC as a session-lifetime "placeholder"
+ * whose value resets to `''` (empty string, NOT NULL) at the end of every
+ * later transaction that doesn't set it again. Under connection pooling a
+ * later request's transaction can easily be the one that "doesn't set it
+ * again" (e.g. the auth-bootstrap transaction only sets `app.auth_uid`, not
+ * `app.org_id`) and land on a reused connection, so `''::uuid` must be
+ * guarded explicitly — otherwise it throws `invalid input syntax for type
+ * uuid: ""` intermittently depending on what ran earlier on that connection.
+ */
+function safeUuidSetting(name: string): string {
+  return `NULLIF(current_setting('${name}', true), '')::uuid`;
+}
+
+function safeUuidArraySetting(name: string): string {
+  return `string_to_array(NULLIF(current_setting('${name}', true), ''), ',')::uuid[]`;
+}
+
 function orgCondition(orgColumn: string): string {
-  return `${orgColumn} = current_setting('app.org_id', true)::uuid`;
+  return `${orgColumn} = ${safeUuidSetting("app.org_id")}`;
 }
 
 function branchCondition(column: string, kind: BranchColumnKind): string {
   if (kind === "none") return "true";
   if (kind === "array") {
-    return (
-      `current_setting('app.scope', true) = 'ALL' OR ` +
-      `${column} && string_to_array(current_setting('app.allowed_branch_ids', true), ',')::uuid[]`
-    );
+    return `current_setting('app.scope', true) = 'ALL' OR ${column} && ${safeUuidArraySetting("app.allowed_branch_ids")}`;
   }
   // single column — NULL-safe so nullable branch_id columns (audit_logs,
   // notifications, attachments) stay visible for org-wide entries.
   return (
     `current_setting('app.scope', true) = 'ALL' OR ${column} IS NULL OR ` +
-    `${column} = ANY (string_to_array(current_setting('app.allowed_branch_ids', true), ',')::uuid[])`
+    `${column} = ANY (${safeUuidArraySetting("app.allowed_branch_ids")})`
   );
 }
 
@@ -158,27 +178,39 @@ const BOOTSTRAP_STATEMENTS: string[] = [
   `ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;`,
   `DROP POLICY IF EXISTS organizations_self_scope ON organizations;`,
   `CREATE POLICY organizations_self_scope ON organizations USING (
-     id = current_setting('app.org_id', true)::uuid
+     id = ${safeUuidSetting("app.org_id")}
    );`,
 
   `ALTER TABLE users ENABLE ROW LEVEL SECURITY;`,
   `DROP POLICY IF EXISTS users_self_or_org_scope ON users;`,
   `CREATE POLICY users_self_or_org_scope ON users USING (
-     id = current_setting('app.auth_uid', true)::uuid
-     OR org_id = current_setting('app.org_id', true)::uuid
+     id = ${safeUuidSetting("app.auth_uid")}
+     OR org_id = ${safeUuidSetting("app.org_id")}
    );`,
 
   `ALTER TABLE user_role_assignments ENABLE ROW LEVEL SECURITY;`,
   `DROP POLICY IF EXISTS user_role_assignments_self_or_org_scope ON user_role_assignments;`,
   `CREATE POLICY user_role_assignments_self_or_org_scope ON user_role_assignments USING (
-     user_id = current_setting('app.auth_uid', true)::uuid
-     OR org_id = current_setting('app.org_id', true)::uuid
+     user_id = ${safeUuidSetting("app.auth_uid")}
+     OR org_id = ${safeUuidSetting("app.org_id")}
    );`,
 ];
+
+/**
+ * Supabase tự động bật RLS mặc định trên MỌI bảng mới tạo (an toàn theo mặc
+ * định ở cấp platform, không liên quan gì tới script này) — nếu không có
+ * policy nào, bảng bị khóa ghi/đọc hoàn toàn kể cả với các thao tác nội bộ,
+ * đáng tin cậy như `counters`/`idempotency_keys`. Phải tắt RLS tường minh
+ * cho các bảng này thay vì giả định "không đụng vào = không có RLS".
+ */
+function unscopedTableStatements(table: string): string[] {
+  return [`ALTER TABLE ${table} DISABLE ROW LEVEL SECURITY;`];
+}
 
 export function generateAllPolicySql(): string[] {
   const statements: string[] = [...BOOTSTRAP_STATEMENTS];
   for (const config of SCOPED_TABLES) statements.push(...policyStatements(config));
   for (const table of BRANCH_ONLY_TABLES) statements.push(...branchOnlyPolicyStatements(table));
+  for (const table of UNSCOPED_TABLES) statements.push(...unscopedTableStatements(table));
   return statements;
 }

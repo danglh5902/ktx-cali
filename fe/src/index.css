@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* docs/15-ux-navigation.md §9: cỡ chữ cơ bản ≥14px, tương phản cao. */
+html {
+  font-size: 14px;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* docs/15 §10: focus ring rõ ràng cho điều hướng bàn phím. */
+:focus-visible {
+  @apply outline-none ring-2 ring-offset-2 ring-blue-600;
+}

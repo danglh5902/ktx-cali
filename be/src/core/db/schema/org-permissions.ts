@@ -122,6 +122,9 @@ export const roomTypes = pgTable("room_types", {
   name: text("name").notNull(),
   capacity: integer("capacity").notNull(),
   basePrice: money("base_price").notNull(),
+  /** Giá mặc định theo vị trí giường tầng — NULL thì rơi về `basePrice` (xem resolveBedPrice). */
+  bunkLowerPrice: money("bunk_lower_price"),
+  bunkUpperPrice: money("bunk_upper_price"),
   wholeRoomPrice: money("whole_room_price"),
   defaultAmenities: text("default_amenities").array(),
   description: text("description"),
@@ -145,6 +148,9 @@ export const rooms = pgTable("rooms", {
   actualBedCount: integer("actual_bed_count").notNull().default(0),
   areaM2: text("area_m2"),
   priceOverride: money("price_override"),
+  /** Ghi đè giá theo vị trí giường tầng cho riêng phòng này — ưu tiên hơn `room_types.bunk_*_price`. */
+  bunkLowerPriceOverride: money("bunk_lower_price_override"),
+  bunkUpperPriceOverride: money("bunk_upper_price_override"),
   wholeRoomPrice: money("whole_room_price"),
   amenities: text("amenities").array(),
   hasPrivateToilet: boolean("has_private_toilet").notNull().default(false),
