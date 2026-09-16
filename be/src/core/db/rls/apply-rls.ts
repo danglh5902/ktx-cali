@@ -8,7 +8,11 @@ import { generateAllPolicySql } from "./policies.js";
  *   pnpm db:apply-rls
  */
 async function main() {
-  const sql = postgres(env.DATABASE_URL, { max: 1 });
+  // ALTER TABLE ... ENABLE ROW LEVEL SECURITY / CREATE POLICY require the
+  // table owner (or a superuser) — the app runtime role (DATABASE_URL) is
+  // intentionally NOT the owner (see docs/11 §2 D5), so this must run as
+  // the schema-owning `postgres` role instead.
+  const sql = postgres(env.migrateDatabaseUrl, { max: 1 });
   const statements = generateAllPolicySql();
 
   console.log(`Applying ${statements.length} RLS statements...`);

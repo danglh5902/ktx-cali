@@ -1,6 +1,7 @@
 /**
  * Nhóm 6 — Hệ thống. See docs/12-database-schema.md.
  */
+import { sql } from "drizzle-orm";
 import {
   bigint,
   jsonb,
@@ -90,7 +91,7 @@ export const attachments = pgTable("attachments", {
 
 export const counters = pgTable("counters", {
   key: text("key").primaryKey(),
-  seq: bigint("seq", { mode: "bigint" }).notNull().default(0n),
+  seq: bigint("seq", { mode: "bigint" }).notNull().default(sql`0`),
 });
 
 export const reportSnapshots = pgTable("report_snapshots", {

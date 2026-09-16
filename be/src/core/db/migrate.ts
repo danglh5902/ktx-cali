@@ -9,7 +9,7 @@ import { env } from "../../env.js";
  * connection for migrations.
  */
 async function main() {
-  const migrationClient = postgres(env.DATABASE_URL, { max: 1 });
+  const migrationClient = postgres(env.migrateDatabaseUrl, { max: 1 });
   const migrationDb = drizzle(migrationClient);
 
   console.log("Running migrations...");

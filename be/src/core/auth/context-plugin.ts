@@ -25,6 +25,11 @@ export function registerAuthContext(app: FastifyInstance): void {
   app.decorateRequest("ctx", null as unknown as RequestContext);
 
   app.addHook("onRequest", async (request: FastifyRequest, reply) => {
+    // @fastify/swagger-ui registers its own routes — no route.config to mark
+    // public on those, so bypass by prefix instead. Viewing docs needs no
+    // auth; calling an endpoint via "Try it out" still needs a real bearer
+    // token pasted into the Authorize button.
+    if (request.url.startsWith("/documentation")) return;
     if (request.routeOptions.config?.public) return;
 
     const authHeader = request.headers.authorization;

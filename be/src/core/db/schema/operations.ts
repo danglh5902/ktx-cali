@@ -1,6 +1,7 @@
 /**
  * Nhóm 5 — Vận hành. See docs/10-module-operations.md and docs/12-database-schema.md.
  */
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
@@ -102,7 +103,7 @@ export const assets = pgTable("assets", {
   condition: text("condition").notNull().default("NEW"),
   status: text("status").notNull().default("IN_USE"),
   repairCount: integer("repair_count").notNull().default(0),
-  totalRepairCost: money("total_repair_cost").notNull().default(0n),
+  totalRepairCost: money("total_repair_cost").notNull().default(sql`0`),
   images: text("images").array(),
   notes: text("notes"),
 }, (t) => ({

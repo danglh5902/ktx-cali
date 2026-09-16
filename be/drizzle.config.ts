@@ -6,7 +6,10 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "",
+    // drizzle-kit only reads DDL metadata (table list for `drizzle-kit pull`,
+    // migration history table for `generate`) — use the schema-owning role,
+    // same as db:migrate/db:apply-rls. See env.ts.
+    url: process.env.MIGRATE_DATABASE_URL ?? process.env.DATABASE_URL ?? "",
   },
   strict: true,
   verbose: true,
