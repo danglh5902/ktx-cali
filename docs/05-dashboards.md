@@ -199,7 +199,7 @@ Mở ticket → mô tả, ảnh khách gửi, lịch sử sửa chữa của ph�
 | Số tiền phải đóng tháng này | Số lớn + hạn thanh toán + nút **QR thanh toán** |
 | Hóa đơn hiện tại | **Có chi tiết chỉ số điện đầu kỳ/cuối kỳ và đơn giá** — đây là điều khách khiếu nại nhiều nhất, minh bạch được là giảm hẳn tranh cãi |
 | Lịch sử thanh toán | Danh sách + tải phiếu thu |
-| Hợp đồng | Xem/tải PDF, ngày hết hạn, nút đề nghị gia hạn |
+| Hợp đồng | Xem nội dung (in được từ trình duyệt), ngày hết hạn, nút đề nghị gia hạn |
 | Sự cố | Nút báo sự cố (chọn loại + chụp ảnh) + theo dõi tiến độ |
 | Nội quy | Nội quy chi nhánh |
 | Thông báo | Từ ban quản lý |

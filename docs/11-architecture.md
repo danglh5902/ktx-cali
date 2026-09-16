@@ -9,63 +9,62 @@
 |---|---|---|
 | **Web admin** | Vite + React 19 + TypeScript | SPA |
 | **Portal khách thuê** | Cùng codebase, route riêng | Phase 3 |
-| **API** | Node.js + TypeScript + **Fastify** + Mongoose | Fastify nhanh hơn và có validation schema sẵn; Express cũng chấp nhận được nếu team quen hơn |
-| **Database** | **MongoDB replica set** | Bắt buộc replica set, xem §2 |
-| **File/ảnh** | S3-compatible (AWS S3, Cloudflare R2, hoặc MinIO tự host) | Không lưu file trong MongoDB |
+| **API** | Node.js + TypeScript + **Fastify** | Fastify nhanh hơn và có validation schema sẵn; Express cũng chấp nhận được nếu team quen hơn |
+| **Database** | **Supabase (PostgreSQL managed)** | Postgres có transaction ACID gốc và Row-Level Security native — không cần replica set/cụm để có transaction, xem §2 |
+| **ORM** | Drizzle (hoặc Prisma) | Truy vấn Postgres type-safe, migration có version |
+| **Auth** | Supabase Auth | JWT + quản lý session; permission/role riêng vẫn do app tự thiết kế (xem [04-roles-permissions.md](04-roles-permissions.md)) |
+| **File/ảnh** | **Cloudinary** | Chỉ lưu ảnh (CCCD, kiểm kê, sự cố, tài sản...). Hệ thống không tạo/lưu file PDF — xem ghi chú cuối §7.2 |
 | **Queue/Job** | BullMQ + Redis | Cho cron, gửi thông báo, báo cáo nặng |
 | **Cache** | Redis | Session, rate limit, cache báo cáo |
-| **Xác thực** | JWT access token (15 phút) + refresh token (httpOnly cookie) | |
+| **Thanh toán** | VietQR + webhook ngân hàng (Casso/SePay hoặc API ngân hàng) | Cổng thanh toán bên thứ 3 chính thức — xem mục 11 |
 
 ### 1.2 Thư viện đề xuất
 | Mục đích | Thư viện |
 |---|---|
-| Validation | **Zod** — dùng chung schema cho FE và BE qua `packages/shared` |
+| Validation | **Zod** |
 | Data fetching | TanStack Query |
 | Form | React Hook Form + Zod resolver |
 | UI | shadcn/ui + Tailwind (hoặc Ant Design nếu ưu tiên bảng biểu phong phú sẵn có) |
 | Bảng dữ liệu | TanStack Table |
 | Biểu đồ | Recharts hoặc ECharts |
 | Ngày tháng | date-fns + date-fns-tz |
-| PDF | Puppeteer (render HTML → PDF, dùng cho hợp đồng/hóa đơn) |
+| Ảnh | Cloudinary SDK (upload, transform, signed/private delivery URL) |
 | Excel | ExcelJS |
-| Test | Vitest + Supertest + mongodb-memory-server |
+| Test | Vitest + Supertest + Postgres test container (Testcontainers hoặc Supabase local CLI) |
 
-### 1.3 Cấu trúc monorepo
+### 1.3 Cấu trúc thư mục dự án
 ```
 ktx-cali/
-├── apps/
-│   ├── web/                 # Vite + React (admin + portal)
-│   └── api/                 # Fastify + Mongoose
-├── packages/
-│   ├── shared/              # Zod schema, types, constants, permission list
-│   └── config/              # eslint, tsconfig dùng chung
-├── docs/                    # Bộ tài liệu này
-└── scripts/                 # seed, migration, import
+├── be/                      # Fastify + Drizzle (API) — thư mục độc lập, tự cài & deploy riêng
+├── fe/                      # Vite + React (admin + portal) — thư mục độc lập, tự cài & deploy riêng
+└── docs/                    # Bộ tài liệu này
 ```
 
-Dùng **pnpm workspace**. Lợi ích lớn nhất: type và Zod schema dùng chung giữa FE và BE — đổi một chỗ, cả hai bên báo lỗi biên dịch ngay.
+`be/` và `fe/` là 2 thư mục **hoàn toàn độc lập** ở cấp gốc — mỗi thư mục có `package.json`/`node_modules`/lockfile riêng, không dùng chung workspace (pnpm workspace, packages/shared...). Lý do: `be` và `fe` deploy tách biệt (khác hosting target, khác vòng đời release), dùng chung workspace sẽ tạo phụ thuộc build không cần thiết giữa hai bên. Logic dùng chung cho BE (money, permission catalogue, Zod schema, `RequestContext` type) nằm nội bộ trong `be/src/shared/`; nếu `fe/` sau này cần cùng logic, copy/publish riêng thay vì quay lại mô hình workspace chung.
 
 ### 1.4 Cấu trúc thư mục API
 ```
-apps/api/src/
+be/src/
 ├── modules/
 │   ├── branches/
-│   │   ├── branch.model.ts        # Mongoose schema
-│   │   ├── branch.repository.ts   # ★ CHỖ DUY NHẤT truy cập model
+│   │   ├── branch.schema.ts       # Drizzle table schema (Postgres) — đặt trong core/db/schema thật ra
+│   │   ├── branch.repository.ts   # ★ CHỖ DUY NHẤT truy cập bảng
 │   │   ├── branch.service.ts      # Nghiệp vụ
 │   │   ├── branch.controller.ts   # HTTP
 │   │   ├── branch.routes.ts
 │   │   └── branch.test.ts
 │   ├── invoices/ ...
 │   └── ...
+├── shared/                    # money (VND bigint), permission catalogue, RequestContext type, Zod schema
 ├── core/
-│   ├── auth/                  # JWT, xác thực
-│   ├── rbac/                  # permission, scope guard
+│   ├── auth/                  # Supabase Auth, xác thực
+│   ├── rbac/                  # permission, RLS policy helper
 │   ├── audit/                 # ghi audit log
-│   ├── db/                    # kết nối, transaction helper
-│   ├── money/                 # số nguyên VNĐ, làm tròn
-│   ├── errors/
-│   └── jobs/                  # BullMQ workers
+│   ├── db/                    # kết nối Postgres, transaction helper, RLS policy generator
+│   ├── money/                 # re-export shared/money + JSON (de)serialize cho VND
+│   ├── payment/                # webhook VietQR/Casso/SePay, xác thực chữ ký, đối soát
+│   └── errors/
+├── app.ts
 └── server.ts
 ```
 
@@ -94,17 +93,17 @@ Sổ cọc riêng (`deposit_ledger`) theo mô hình sổ cái. Không bao giờ 
 
 ### D4. Tiền lưu dạng số nguyên VNĐ
 
-```ts
-// SAI
-{ amount: 2850000.00 }          // Double → sai số tích lũy
+```sql
+-- SAI
+amount numeric(15,2)   -- hoặc double precision → sai số tích lũy
 
-// ĐÚNG
-{ amount: NumberLong(2850000) } // Int64, đơn vị đồng
+-- ĐÚNG
+amount bigint          -- đơn vị đồng, không có phần thập phân
 ```
 
-VNĐ không có phần thập phân nên không cần đơn vị nhỏ hơn. `Int64` chứa được tới ~9×10¹⁸ đồng — thừa đủ.
+VNĐ không có phần thập phân nên không cần đơn vị nhỏ hơn. Postgres `bigint` chứa được tới ~9×10¹⁸ đồng — thừa đủ.
 
-Tạo module `core/money`:
+Tạo module `shared/money.ts`:
 ```ts
 type VND = bigint
 function roundToThousand(v: VND): VND
@@ -112,59 +111,63 @@ function splitEvenly(total: VND, weights: number[]): VND[]  // phần dư dồn 
 function toText(v: VND): string                              // "Hai triệu tám trăm năm mươi nghìn đồng"
 ```
 
-### D5. Multi-branch: scope guard ở tầng repository
+### D5. Multi-branch: Row-Level Security native ở Postgres
 
-MongoDB **không có** Row Level Security. Bảo mật phân chi nhánh phải cưỡng chế bằng code, ở một chỗ duy nhất.
+Postgres có RLS built-in — mỗi bảng nghiệp vụ có policy khai báo, database tự chặn truy vấn sai chi nhánh kể cả khi code tầng trên có bug. Đây là điểm khác biệt lớn nhất so với thiết kế MongoDB trước đây (từng phải tự cưỡng chế "scope guard" bằng code).
+
+```sql
+-- Bật RLS trên mọi bảng nghiệp vụ
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+
+-- Policy: chỉ thấy invoice của org mình, và (nếu scope=BRANCH) chỉ chi nhánh được gán
+CREATE POLICY invoices_branch_scope ON invoices
+  USING (
+    org_id = current_setting('app.org_id')::uuid
+    AND (
+      current_setting('app.scope') = 'ALL'
+      OR branch_id = ANY (string_to_array(current_setting('app.allowed_branch_ids'), ',')::uuid[])
+    )
+  );
+```
+
+`app.org_id` / `app.scope` / `app.allowed_branch_ids` được set mỗi request (`SET LOCAL`) ngay sau khi middleware xác thực đọc xong `RequestContext` — trong cùng transaction/connection của request đó, nên không rò rỉ giữa các request đồng thời.
 
 ```ts
-// core/rbac/scope.ts
+// core/rbac/context.ts
 export interface RequestContext {
-  userId: ObjectId
-  orgId: ObjectId
+  userId: string
+  orgId: string
   permissions: Set<string>
   scope: 'ALL' | 'BRANCH'
-  allowedBranchIds: ObjectId[]
+  allowedBranchIds: string[]
 }
 
-export function scopeFilter(ctx: RequestContext): FilterQuery<any> {
-  const base = { orgId: ctx.orgId, deletedAt: null }
-  if (ctx.scope === 'ALL') return base
-  return { ...base, branchId: { $in: ctx.allowedBranchIds } }
-}
-
-// Mọi repository:
-export class InvoiceRepository {
-  async findMany(ctx: RequestContext, filter: FilterQuery<Invoice> = {}) {
-    return InvoiceModel.find({ ...scopeFilter(ctx), ...filter })
-  }
-  async findById(ctx: RequestContext, id: ObjectId) {
-    // Lưu ý: KHÔNG findById rồi mới check branch — lộ sự tồn tại của bản ghi
-    return InvoiceModel.findOne({ _id: id, ...scopeFilter(ctx) })
-  }
+// core/db/withRequestContext.ts — áp dụng trước mọi truy vấn của request
+export async function withRequestContext<T>(ctx: RequestContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL app.org_id = ${ctx.orgId}`)
+    await tx.execute(sql`SET LOCAL app.scope = ${ctx.scope}`)
+    await tx.execute(sql`SET LOCAL app.allowed_branch_ids = ${ctx.allowedBranchIds.join(',')}`)
+    return fn(tx)
+  })
 }
 ```
 
-**Bốn biện pháp bắt buộc kèm theo:**
+**Bốn biện pháp bắt buộc kèm theo (vẫn giữ, nay là defense-in-depth chứ không phải lớp chặn duy nhất):**
 
-1. **`branchId` denormalized xuống mọi collection nghiệp vụ** — kể cả `invoice_lines`, `payment_allocations`, `audit_logs`. Không bao giờ join ngược lên để kiểm tra quyền.
+1. **`branch_id` có ở mọi bảng nghiệp vụ** — kể cả `invoice_lines`, `payment_allocations`, `audit_logs` — làm khóa ngoại thật (FK), không chỉ để lọc.
 
-2. **ESLint rule cấm import model ngoài repository:**
-   ```js
-   // .eslintrc — no-restricted-imports
-   { patterns: [{ group: ['**/*.model'], message:
-     'Chỉ repository được import model. Dùng repository để scope guard luôn được áp dụng.' }] }
-   ```
-   Có ngoại lệ cho chính file repository và file test.
+2. **Repository là nơi duy nhất chạy câu lệnh SQL/ORM.** ESLint rule cấm import schema/query builder ngoài repository, tương tự trước đây — mục đích để mọi truy vấn đều đi qua `withRequestContext()`.
 
-3. **Test phân quyền cho mọi endpoint** — xem [04-roles-permissions.md §5](04-roles-permissions.md).
+3. **Test phân quyền cho mọi endpoint vẫn bắt buộc** — xem [04-roles-permissions.md §5](04-roles-permissions.md). RLS là lớp chặn ở database, nhưng test đảm bảo permission/limit ở tầng ứng dụng (lớp 1 và 3 trong mô hình 3 lớp) cũng đúng.
 
-4. **`orgId` có mặt từ đầu**, dù hiện chỉ có 1 tổ chức. Thêm sau này là dự án migration đau đớn.
+4. **`org_id` có mặt từ đầu**, dù hiện chỉ có 1 tổ chức. Thêm sau này là dự án migration đau đớn.
 
-> **Trade-off đã ghi nhận:** PostgreSQL + Row Level Security an toàn hơn về mặt cấu trúc — database tự chặn kể cả khi code sai. Với MongoDB, an toàn phụ thuộc kỷ luật code. Vì vậy test phân quyền ở đây **không phải tùy chọn**. Nếu sau này muốn chuyển sang Postgres, mô hình nghiệp vụ trong tài liệu này chuyển đổi được gần như nguyên vẹn (các collection ánh xạ thẳng thành bảng).
+> **Vì sao đổi từ MongoDB sang Postgres/Supabase:** thiết kế trước đây (scope-guard code + `NumberLong` cho tiền + bắt buộc replica set chỉ để có transaction) là cách "giả lập" các tính năng mà Postgres có sẵn native (RLS, `bigint`, transaction ACID). Ở quy mô hiện tại, đổi ngay từ giai đoạn thiết kế (chưa viết code) là thời điểm rẻ nhất.
 
-### D6. Bắt buộc MongoDB replica set
+### D6. Transaction là mặc định của Postgres — không cần hạ tầng đặc biệt
 
-Multi-document transaction chỉ hoạt động trên replica set. Các nghiệp vụ **bắt buộc** phải atomic:
+Postgres hỗ trợ multi-statement transaction ACID ngay trên một instance duy nhất, không cần cụm/replica set như MongoDB. Các nghiệp vụ **bắt buộc** phải atomic:
 
 | Nghiệp vụ | Nếu không atomic |
 |---|---|
@@ -177,20 +180,12 @@ Multi-document transaction chỉ hoạt động trên replica set. Các nghiệp
 
 ```ts
 // core/db/transaction.ts
-export async function withTransaction<T>(fn: (session: ClientSession) => Promise<T>): Promise<T> {
-  const session = await mongoose.startSession()
-  try {
-    return await session.withTransaction(fn, {
-      readConcern: { level: 'snapshot' },
-      writeConcern: { w: 'majority' },
-    })
-  } finally {
-    await session.endSession()
-  }
+export async function withTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => fn(tx))
 }
 ```
 
-**Triển khai:** MongoDB Atlas (gói M10 trở lên) hoặc tự host replica set 3 node. Môi trường dev: single-node replica set (`mongod --replSet rs0` rồi `rs.initiate()`) — vẫn hỗ trợ transaction.
+**Triển khai:** Supabase project (managed Postgres) — không cần tự vận hành cụm, không cần cấu hình đặc biệt để có transaction. Môi trường dev: Supabase CLI chạy Postgres local qua Docker, hoặc kết nối thẳng project Supabase dev.
 
 ### D7. Trạng thái giường là dữ liệu dẫn xuất
 
@@ -217,46 +212,46 @@ Xem [09-module-billing.md §7](09-module-billing.md). Không có thì tiền m�
 
 | Phương án | Cách làm | Ưu | Nhược | Phù hợp Cali? |
 |---|---|---|---|---|
-| **Shared DB + branchId** ✅ | Một database, mọi document có `branchId`, lọc ở tầng repository | Đơn giản nhất, báo cáo hợp nhất dễ, chi phí hạ tầng thấp, migration một lần | Phụ thuộc kỷ luật code, rủi ro nếu quên scope | **Khuyến nghị** |
+| **Shared DB + `branch_id` + RLS** ✅ | Một database Postgres, mọi bảng có `branch_id`, chặn ở RLS policy | Đơn giản nhất, báo cáo hợp nhất dễ, chi phí hạ tầng thấp, database tự chặn kể cả khi code sai | Cần thiết kế policy đúng ngay từ đầu | **Khuyến nghị** |
 | Database riêng mỗi chi nhánh | Mỗi chi nhánh một DB | Cách ly tuyệt đối | Báo cáo hợp nhất rất khó, migration nhân lên theo số chi nhánh, chi phí cao | Không |
-| Collection riêng mỗi chi nhánh | `invoices_TD`, `invoices_BT`... | — | Truy vấn động, index nhân lên, không mở rộng được | Không |
+| Schema riêng mỗi chi nhánh | `invoices_td`, `invoices_bt`... | — | Truy vấn động, không mở rộng được | Không |
 
-**Chọn: Shared DB + `branchId` + scope guard tầng repository.**
+**Chọn: Shared DB + `branch_id` + Row-Level Security.**
 
-Lý do: ở quy mô 1–50 chi nhánh, báo cáo hợp nhất là yêu cầu cốt lõi (Owner muốn xem toàn hệ thống). Tách DB làm việc đó trở nên rất phức tạp mà không mang lại lợi ích tương xứng.
+Lý do: ở quy mô 1–50 chi nhánh, báo cáo hợp nhất là yêu cầu cốt lõi (Owner muốn xem toàn hệ thống). Tách DB làm việc đó trở nên rất phức tạp mà không mang lại lợi ích tương xứng. So với thiết kế MongoDB trước đây, RLS loại bỏ hẳn rủi ro "quên áp scope ở một endpoint" vì chặn xảy ra ở database, không phải ở code.
 
 ### 3.2 Phân cấp định danh
 ```
-orgId    → luôn có, chuẩn bị cho multi-tenant
-branchId → ranh giới phân quyền
+org_id    → luôn có, chuẩn bị cho multi-tenant
+branch_id → ranh giới phân quyền
 ```
 
-Mọi collection nghiệp vụ có cả hai. Mọi compound index đặt `branchId` (hoặc `orgId`) ở vị trí **đầu tiên**.
+Mọi bảng nghiệp vụ có cả hai (làm FK thật). Mọi compound index đặt `branch_id` (hoặc `org_id`) ở vị trí **đầu tiên**.
 
 ### 3.3 Luồng xử lý một request
 ```
 HTTP Request
-  → Auth middleware: verify JWT → userId
+  → Auth middleware: verify Supabase JWT → userId
   → Context middleware: nạp user + role assignments → RequestContext
       { orgId, permissions: Set, scope, allowedBranchIds }
   → Permission guard: route khai báo permission cần có
       route.config = { permission: 'invoice:issue' }
   → Controller: validate input bằng Zod
   → Service: nghiệp vụ + kiểm tra điều kiện (hạn mức, quyền sở hữu)
-  → Repository: scopeFilter(ctx) tự động áp vào mọi query
-  → MongoDB
+  → Repository: withRequestContext(ctx) set biến phiên Postgres → RLS tự áp vào mọi query
+  → Postgres (Supabase)
   ← Response (chỉ trả field mà vai trò đó được xem)
 ```
 
 ### 3.4 Owner/Super Admin xem toàn hệ thống
-`scope = 'ALL'` → `scopeFilter` chỉ lọc theo `orgId`, bỏ qua `branchId`. Không có code path riêng — cùng một hàm, khác tham số.
+`scope = 'ALL'` → policy RLS bỏ qua điều kiện `branch_id`, chỉ còn lọc theo `org_id`. Không có code path riêng — cùng một policy, khác giá trị biến phiên.
 
 ---
 
 ## 4. Xử lý tiền tệ
 
 ```ts
-// packages/shared/money.ts
+// be/src/shared/money.ts
 
 /** Tiền VNĐ, đơn vị đồng, luôn là số nguyên */
 export type VND = bigint
@@ -282,9 +277,9 @@ export function splitByWeight(total: VND, weights: number[]): VND[] {
 export function toVietnameseText(v: VND): string
 ```
 
-**Lưu trong MongoDB:** `Long` (Int64) qua `mongoose.Schema.Types.BigInt` hoặc custom type. Đọc ra chuyển về `bigint`. **Tuyệt đối không dùng `Number` cho tiền.**
+**Lưu trong Postgres:** cột kiểu `bigint` (kiểu gốc của Postgres, không cần custom type như Mongoose). Đọc ra qua Drizzle/driver về `bigint` JS. **Tuyệt đối không dùng `numeric`/`float`/`Number` cho tiền.**
 
-**Truyền qua JSON:** `bigint` không serialize được sang JSON → truyền dạng **chuỗi** (`"2850000"`), FE parse lại. Đặt quy ước này ngay từ đầu, thống nhất trong Zod schema dùng chung.
+**Truyền qua JSON:** `bigint` không serialize được sang JSON → truyền dạng **chuỗi** (`"2850000"`), FE parse lại. Đặt quy ước này ngay từ đầu, thống nhất trong Zod schema.
 
 ---
 
@@ -292,7 +287,7 @@ export function toVietnameseText(v: VND): string
 
 | Quy tắc | Chi tiết |
 |---|---|
-| **Lưu trữ** | Luôn UTC (`Date` của MongoDB) |
+| **Lưu trữ** | Luôn UTC (`timestamptz` của Postgres) |
 | **Hiển thị** | `Asia/Ho_Chi_Minh` (UTC+7) |
 | **Mốc kỳ** | Ngày chốt kỳ, hạn thanh toán tính theo giờ VN, không phải UTC |
 | **Ngày thuần túy** | `startDate`, `endDate` của hợp đồng/assignment là **ngày**, không có giờ → lưu chuỗi `YYYY-MM-DD` hoặc `Date` đặt ở 00:00 giờ VN. Nếu không, hợp đồng bắt đầu 01/09 sẽ thành 31/08 khi hiển thị |
@@ -323,7 +318,7 @@ export function toVietnameseText(v: VND): string
 ### 6.3 Cấu trúc
 ```js
 {
-  _id, orgId, branchId,
+  id, orgId, branchId,
   actorId, actorName, actorRole,        // snapshot — user có thể bị xóa sau này
   action: 'invoice.adjust',
   entity: 'invoices', entityId,
@@ -332,17 +327,17 @@ export function toVietnameseText(v: VND): string
   diff: [{ path: 'grandTotal', from: ..., to: ... }],
   reason: 'Ghi nhầm chỉ số điện...',    // bắt buộc với nhóm nhạy cảm
   ip, userAgent, requestId,
-  at: ISODate()
+  at: timestamptz
 }
 ```
 
 Lưu `actorName`/`actorRole` dạng snapshot — nếu chỉ lưu `actorId` và user bị xóa, audit log mất ý nghĩa.
 
 ### 6.4 Lưu trữ & bảo vệ
-- Index: `{entity, entityId, at:-1}`, `{branchId, at:-1}`, `{actorId, at:-1}`
-- **Audit tài chính giữ vĩnh viễn.** Audit thao tác thông thường TTL 3 năm
-- Cân nhắc bản sao append-only ở nơi khác (S3 object-lock) cho nhóm tài chính — để kể cả DB bị xâm nhập, dấu vết vẫn còn
-- Phân quyền xem: Owner/Super Admin toàn bộ, Branch Manager theo chi nhánh, Kế toán nhóm tài chính
+- Index: `(entity, entity_id, at desc)`, `(branch_id, at desc)`, `(actor_id, at desc)`
+- **Audit tài chính giữ vĩnh viễn.** Audit thao tác thông thường xóa sau 3 năm (job dọn định kỳ, Postgres không có TTL index sẵn như MongoDB)
+- Cân nhắc bản sao append-only ở nơi khác cho nhóm tài chính (vd: export định kỳ sang object storage có object-lock) — để kể cả DB chính bị xâm nhập, dấu vết vẫn còn
+- Phân quyền xem: RLS + policy riêng cho bảng `audit_logs` — Owner/Super Admin toàn bộ, Branch Manager theo chi nhánh, Kế toán nhóm tài chính
 
 ---
 
@@ -351,13 +346,13 @@ Lưu `actorName`/`actorRole` dạng snapshot — nếu chỉ lưu `actorId` và 
 ### 7.1 Xác thực
 | Mục | Thiết kế |
 |---|---|
-| Đăng nhập | Email/SĐT + mật khẩu. Hash bằng **argon2id** |
-| Token | Access JWT 15 phút + refresh token httpOnly cookie 7 ngày, có xoay vòng (rotation) |
-| Phiên nhân viên | Hết hạn sau 8 giờ không hoạt động (ngắn hơn khách thuê) |
+| Đăng nhập | Email/SĐT + mật khẩu qua **Supabase Auth**. Hash bằng argon2id (Supabase Auth quản lý sẵn) |
+| Token | Access JWT (Supabase) + refresh token, có xoay vòng (rotation) |
+| Phiên nhân viên | Hết hạn sau 8 giờ không hoạt động (ngắn hơn khách thuê) — cấu hình session timeout trong Supabase Auth |
 | Mật khẩu mặc định | Bắt buộc đổi lần đăng nhập đầu |
-| 2FA | Phase 3, cho Owner/Super Admin/Accountant |
+| 2FA | Phase 3, cho Owner/Super Admin/Accountant — Supabase Auth hỗ trợ MFA sẵn |
 | Khóa tài khoản | 5 lần sai → khóa 15 phút, tăng dần |
-| Portal khách | Đăng nhập bằng SĐT + OTP (đơn giản hơn cho khách, không phải nhớ mật khẩu) |
+| Portal khách | Đăng nhập bằng SĐT + OTP (Supabase Auth hỗ trợ Phone OTP) |
 
 ### 7.2 Dữ liệu nhạy cảm — Nghị định 13/2023
 
@@ -365,25 +360,27 @@ Lưu `actorName`/`actorRole` dạng snapshot — nếu chỉ lưu `actorId` và 
 
 | Yêu cầu | Triển khai |
 |---|---|
-| Không để URL công khai | Object storage private, truy cập qua **presigned URL hết hạn sau 5 phút** |
-| Mã hóa khi lưu | Bật server-side encryption trên bucket |
+| Không để URL công khai | Cloudinary **private/authenticated delivery**, truy cập qua **signed URL hết hạn sau 5 phút** |
+| Mã hóa khi lưu | Bật mã hóa at-rest trên Cloudinary (theo gói dịch vụ) |
 | Ghi log mọi lượt xem | Audit `customer.view_id_doc` |
 | Giới hạn theo vai trò | Chỉ Super Admin, Owner, Branch Manager, Receptionist |
 | Đồng ý của chủ thể | Điều khoản trong hợp đồng về việc thu thập và sử dụng |
 | Chính sách lưu trữ | Xóa/ẩn danh ảnh CCCD sau N năm kể từ khi khách trả phòng |
 | Quyền xóa dữ liệu | Quy trình ẩn danh hóa (giữ bản ghi tài chính) |
 
+> **Ghi chú phạm vi lưu trữ:** Hệ thống chỉ lưu **ảnh** (CCCD, kiểm kê check-in/out, sự cố bảo trì, hóa đơn chi phí...) qua Cloudinary — không tạo/lưu file PDF cho hợp đồng hay hóa đơn. Đây là quyết định sản phẩm đã cân nhắc: hợp đồng/hóa đơn tồn tại dạng dữ liệu có thể xem trong hệ thống; khi cần bản cứng để ký/lưu hồ sơ theo quy định pháp luật, in trực tiếp từ màn hình xem (in trình duyệt) thay vì hệ thống generate và lưu trữ PDF. Xem thêm [08-module-contracts.md](08-module-contracts.md).
+
 ### 7.3 Các biện pháp khác
 | Rủi ro | Biện pháp |
 |---|---|
-| Lộ dữ liệu qua API | Chỉ trả field cần thiết theo vai trò. Không trả nguyên document |
+| Lộ dữ liệu qua API | Chỉ trả field cần thiết theo vai trò. Không trả nguyên row |
 | Brute force | Rate limit theo IP + theo tài khoản |
-| Webhook giả | Verify chữ ký HMAC, kiểm tra IP nguồn, idempotency |
-| SQL/NoSQL injection | Mongoose + Zod validation; cấm truyền object thô vào query |
+| Webhook giả (VietQR/Casso/SePay) | Verify chữ ký HMAC, kiểm tra IP nguồn, idempotency key trên `payments.idempotencyKey`/`externalTxnId` |
+| SQL injection | ORM (Drizzle/Prisma) tham số hóa câu lệnh + Zod validation; cấm ghép chuỗi SQL thô |
 | XSS | React escape mặc định; sanitize nội dung template |
 | CSRF | SameSite=Strict cho refresh cookie |
-| Upload độc hại | Kiểm tra MIME thật (magic bytes), giới hạn dung lượng, quét virus với file lớn |
-| Lộ qua export | Giới hạn quyền, ghi audit, watermark tên người xuất trên PDF |
+| Upload độc hại | Kiểm tra MIME thật (magic bytes) trước khi đẩy lên Cloudinary, giới hạn dung lượng |
+| Lộ qua export | Giới hạn quyền, ghi audit, watermark tên người xuất trên file export (Excel) |
 | Nhân viên cũ | Quy trình offboarding tự động |
 
 ---
@@ -399,15 +396,15 @@ Lưu `actorName`/`actorRole` dạng snapshot — nếu chỉ lưu `actorId` và 
 
 | Chỗ | Vấn đề | Giải pháp |
 |---|---|---|
-| **Sơ đồ giường** | Cần vài trăm giường + trạng thái + người ở | Denormalize `branchId`/`roomId`/`currentAssignmentId` vào `beds` → một truy vấn duy nhất |
-| **Báo cáo nhiều tháng × nhiều chi nhánh** | Aggregate trên `invoice_lines` | Collection `report_snapshots` tính sẵn theo ngày (job nightly). Từ Phase 2 |
-| **Aging công nợ** | Quét mọi hóa đơn chưa thu | Index `{branchId, status, dueDate}`, lưu sẵn `balance` trên invoice |
+| **Sơ đồ giường** | Cần vài trăm giường + trạng thái + người ở | Denormalize `branch_id`/`room_id`/`current_assignment_id` vào bảng `beds` → một truy vấn (JOIN đơn giản) duy nhất |
+| **Báo cáo nhiều tháng × nhiều chi nhánh** | Aggregate trên `invoice_lines` | Bảng `report_snapshots` tính sẵn theo ngày (job nightly), hoặc materialized view Postgres. Từ Phase 2 |
+| **Aging công nợ** | Quét mọi hóa đơn chưa thu | Index `(branch_id, status, due_date)`, lưu sẵn `balance` trên invoice |
 
 ### 8.3 Nguyên tắc index
-1. `branchId` (hoặc `orgId`) luôn ở **vị trí đầu** compound index
+1. `branch_id` (hoặc `org_id`) luôn ở **vị trí đầu** compound index
 2. Mọi trường dùng để lọc danh sách chính đều có index
-3. Trường `deletedAt` đưa vào partial index thay vì index riêng
-4. Định kỳ kiểm tra `db.collection.aggregate([{$indexStats:{}}])` để bỏ index không dùng
+3. Trường `deleted_at` dùng **partial index** (`WHERE deleted_at IS NULL`) thay vì index riêng
+4. Định kỳ kiểm tra `pg_stat_user_indexes` để bỏ index không dùng
 
 ---
 
@@ -415,13 +412,13 @@ Lưu `actorName`/`actorRole` dạng snapshot — nếu chỉ lưu `actorId` và 
 
 | Mục | Yêu cầu |
 |---|---|
-| **Backup database** | Hằng ngày tự động. Giữ 30 bản ngày + 12 bản cuối tháng |
-| **Backup object storage** | Bật versioning + sao chép sang vùng khác. **Hay bị quên nhất** — mất ảnh CCCD và hợp đồng PDF là mất bằng chứng pháp lý |
-| **RPO** (mất tối đa bao nhiêu dữ liệu) | ≤ 24 giờ. Nếu dùng Atlas, bật point-in-time recovery → ≤ 1 phút |
+| **Backup database** | Supabase tự động backup hằng ngày (theo gói); Pro plan trở lên có Point-in-Time Recovery |
+| **Backup ảnh (Cloudinary)** | Bật backup/versioning theo gói Cloudinary. **Hay bị quên nhất** — mất ảnh CCCD và ảnh kiểm kê là mất bằng chứng pháp lý |
+| **RPO** (mất tối đa bao nhiêu dữ liệu) | ≤ 24 giờ ở gói cơ bản; bật PITR (Supabase Pro+) → ≤ vài phút |
 | **RTO** (khôi phục trong bao lâu) | ≤ 4 giờ |
 | **Diễn tập restore** | **Mỗi quý.** Restore vào môi trường riêng, kiểm tra dữ liệu, ghi lại thời gian thực tế. Backup chưa từng restore = không có backup |
-| **Trước migration** | Backup + kịch bản rollback viết sẵn |
-| **Audit log tài chính** | Bản sao riêng, append-only (S3 object-lock) |
+| **Trước migration schema** | Backup + kịch bản rollback (migration Drizzle/Prisma có version) viết sẵn |
+| **Audit log tài chính** | Bản sao riêng, append-only (export định kỳ sang object storage có object-lock) |
 
 ---
 
@@ -430,17 +427,17 @@ Lưu `actorName`/`actorRole` dạng snapshot — nếu chỉ lưu `actorId` và 
 ### 10.1 Môi trường
 | Môi trường | Mục đích |
 |---|---|
-| `local` | Dev, MongoDB single-node replica set qua Docker |
-| `staging` | Dữ liệu giả, test tính năng và migration |
-| `production` | |
+| `local` | Dev, Supabase CLI chạy Postgres local qua Docker |
+| `staging` | Supabase project riêng, dữ liệu giả, test tính năng và migration |
+| `production` | Supabase project riêng |
 
 ### 10.2 Hạ tầng đề xuất (quy mô hiện tại)
 | Thành phần | Lựa chọn | Chi phí ước tính |
 |---|---|---|
 | API | VPS 2–4 vCPU tại VN (Viettel/VNG/BizflyCloud) hoặc Singapore | 500k–1,5tr/tháng |
-| MongoDB | Atlas M10 (Singapore) hoặc tự host replica set trên 3 VPS | Atlas ~1,5tr/tháng |
+| Database + Auth | Supabase (Singapore region) — Free tier cho pilot, Pro ~$25/tháng khi cần PITR/tăng quota | 0–600k/tháng |
 | Redis | Cùng VPS hoặc Upstash | Thấp |
-| Object storage | Cloudflare R2 (không tính phí egress) | Rất thấp |
+| Lưu trữ ảnh | Cloudinary (free tier cho pilot, trả phí theo băng thông/lưu trữ khi tăng quy mô) | Thấp–trung bình |
 | Web | Vercel/Netlify hoặc nginx cùng VPS | Miễn phí–thấp |
 | Zalo ZNS | Theo tin nhắn | ~200–600đ/tin |
 
@@ -455,18 +452,22 @@ Lưu `actorName`/`actorRole` dạng snapshot — nếu chỉ lưu `actorId` và 
 
 ---
 
-## 11. Migration path nếu sau này muốn đổi sang PostgreSQL
+## 11. Thanh toán bên thứ 3 (VietQR + webhook ngân hàng)
 
-Ghi lại để không bị khóa vào một lựa chọn:
+Cổng thanh toán chính thức của hệ thống: **VietQR động** (QR sinh riêng cho từng hóa đơn) + **webhook đối soát ngân hàng** qua trung gian (Casso, SePay) hoặc API ngân hàng trực tiếp. Chi tiết luồng nghiệp vụ và màn hình đối soát: [09-module-billing.md](09-module-billing.md).
 
-| MongoDB | PostgreSQL |
-|---|---|
-| Collection | Bảng |
-| `ObjectId` | `uuid` |
-| Document lồng nhau (`snapshot`, `amenities[]`) | `jsonb` |
-| Scope guard tầng repository | **Row Level Security** — an toàn hơn |
-| Multi-document transaction | Transaction gốc |
-| `Int64` tiền | `bigint` |
-| Partial unique index | Partial unique index (tương đương) |
+### 11.1 Kiến trúc webhook
+```
+Ngân hàng ghi có → Casso/SePay phát hiện → gọi webhook → be/src/core/payment
+  1. Verify chữ ký HMAC (secret riêng theo nhà cung cấp)
+  2. Kiểm tra idempotency: lookup payments.externalTxnId trước khi insert
+  3. Ghi payments (method='VIETQR', status='CONFIRMED', externalTxnId, bankRef)
+  4. Đối soát tự động theo mã hóa đơn trong nội dung chuyển khoản (VietQR nhúng sẵn)
+  5. Không khớp tự động → vào hàng chờ đối soát thủ công (payments.status='PENDING')
+```
 
-Mô hình nghiệp vụ trong bộ tài liệu này **không phụ thuộc MongoDB**. Nếu quy mô tăng và nhu cầu báo cáo phức tạp hơn, việc chuyển đổi là khả thi — tốn công chủ yếu ở tầng repository, không phải ở nghiệp vụ.
+### 11.2 Nguyên tắc bắt buộc
+- **Idempotency là bắt buộc** — webhook có thể gọi lại nhiều lần cho cùng một giao dịch; `payments.externalTxnId` unique nullable chặn ghi trùng (đã có ở [12-database-schema.md](12-database-schema.md)).
+- **Không tin payload webhook** — luôn verify chữ ký trước khi xử lý; log mọi request đến kể cả khi verify thất bại (phát hiện tấn công giả webhook).
+- **Đối soát thủ công vẫn giữ song song** — webhook có thể lỗi/downtime, lễ tân/kế toán vẫn ghi nhận thanh toán tay được (`method='CASH'`/`BANK_TRANSFER`) như phương án dự phòng.
+- Theo roadmap ([18-roadmap.md](18-roadmap.md)), tích hợp VietQR/webhook triển khai ở **Phase 3** — Phase 1 dùng ghi nhận thủ công để kiểm chứng logic công nợ/hóa đơn trước khi tự động hóa đối soát.

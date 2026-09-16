@@ -402,7 +402,7 @@ Nhân viên nghỉ việc:
 ### 7.2 Yêu cầu chung cho mọi báo cáo
 - Lọc theo: khoảng thời gian, chi nhánh (trong phạm vi quyền), tòa/tầng/loại phòng
 - **So sánh kỳ**: kỳ trước, cùng kỳ năm trước
-- Export: **Excel** (quan trọng nhất — người VN làm vận hành sẽ muốn xử lý tiếp), CSV, PDF (để in/gửi)
+- Export: **Excel** (quan trọng nhất — người VN làm vận hành sẽ muốn xử lý tiếp), CSV — không xuất PDF, cần bản in thì in trực tiếp từ màn hình báo cáo
 - Mọi báo cáo áp dụng phạm vi chi nhánh ở backend
 - Ghi audit khi export (ai, báo cáo gì, lúc nào)
 - Báo cáo nặng chạy nền, gửi link khi xong

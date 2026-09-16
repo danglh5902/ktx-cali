@@ -1,8 +1,8 @@
 # 13 — ERD (Entity Relationship Diagram)
 
-> MongoDB không có khóa ngoại cưỡng chế, nhưng quan hệ logic vẫn tồn tại và vẫn phải thiết kế đúng. ERD dưới đây mô tả quan hệ logic; ràng buộc được đảm bảo ở tầng ứng dụng và bằng unique index.
+> PostgreSQL có khóa ngoại (FK) cưỡng chế thật — khác với thiết kế MongoDB trước đây phải tự đảm bảo quan hệ logic ở tầng ứng dụng. ERD dưới đây mô tả các bảng và FK; ràng buộc duy nhất bổ sung bằng unique/partial index.
 >
-> Xem [12-database-schema.md](12-database-schema.md) cho chi tiết field và index.
+> Xem [12-database-schema.md](12-database-schema.md) cho chi tiết cột và index.
 
 ---
 
@@ -82,60 +82,60 @@ erDiagram
 ```mermaid
 erDiagram
     CUSTOMERS {
-        ObjectId _id PK
-        string customerCode UK
-        string fullName
-        string idNumber UK
-        string phone
-        enum status
-        ObjectId currentBedId FK
-        long creditBalance
+        uuid id PK
+        text customer_code UK
+        text full_name
+        text id_number UK
+        text phone
+        text status
+        uuid current_bed_id FK
+        bigint credit_balance
     }
 
     CONTRACTS {
-        ObjectId _id PK
-        string contractNo UK
-        ObjectId customerId FK
-        ObjectId branchId FK
-        date startDate
-        date endDate
-        long monthlyRent "SNAPSHOT"
-        long depositAmount
-        long electricityPrice "SNAPSHOT"
-        string termsSnapshot "SNAPSHOT"
-        enum status
-        ObjectId previousContractId FK
+        uuid id PK
+        text contract_no UK
+        uuid customer_id FK
+        uuid branch_id FK
+        date start_date
+        date end_date
+        bigint monthly_rent "SNAPSHOT"
+        bigint deposit_amount
+        bigint electricity_price "SNAPSHOT"
+        text terms_snapshot "SNAPSHOT"
+        text status
+        uuid previous_contract_id FK
     }
 
     BED_ASSIGNMENTS {
-        ObjectId _id PK
-        ObjectId contractId FK
-        ObjectId customerId FK
-        ObjectId bedId FK
-        date startDate
-        date endDate "null = dang o"
-        enum reason
-        long dailyRate "SNAPSHOT"
+        uuid id PK
+        uuid contract_id FK
+        uuid customer_id FK
+        uuid bed_id FK
+        date start_date
+        date end_date "null = dang o"
+        text reason
+        bigint daily_rate "SNAPSHOT"
     }
 
     BEDS {
-        ObjectId _id PK
-        string code UK
-        ObjectId roomId FK
-        ObjectId branchId FK
-        enum status
-        long priceOverride
-        ObjectId currentAssignmentId FK
+        uuid id PK
+        text code UK
+        uuid room_id FK
+        uuid branch_id FK
+        text status
+        bigint price_override
+        uuid current_assignment_id FK
     }
 
     BOOKINGS {
-        ObjectId _id PK
-        string bookingNo UK
-        ObjectId customerId FK
-        ObjectId bedId FK
-        date holdUntil
-        long depositPaid
-        enum status
+        uuid id PK
+        text booking_no UK
+        uuid customer_id FK
+        uuid bed_id FK
+        timestamptz hold_until
+        bigint deposit_paid
+        text status
     }
 
     CUSTOMERS ||--o{ CONTRACTS : "ký nhiều hợp đồng theo thời gian"
@@ -159,20 +159,19 @@ erDiagram
 
 1. **Tính tiền phòng tự động prorate.** Engine chỉ cần duyệt các assignment giao với kỳ tính. Nghiệp vụ "chuyển phòng giữa tháng" không cần một dòng code đặc biệt nào.
 
-2. **Lịch sử đầy đủ hai chiều.** `{bedId}` → ai từng ở giường này. `{customerId}` → khách này từng ở đâu.
+2. **Lịch sử đầy đủ hai chiều.** `bed_id` → ai từng ở giường này. `customer_id` → khách này từng ở đâu.
 
 3. **Chống bán trùng ở tầng database.**
-   ```js
-   db.bed_assignments.createIndex(
-     { bedId: 1 },
-     { unique: true, partialFilterExpression: { endDate: null } }
-   )
+   ```sql
+   CREATE UNIQUE INDEX bed_assignments_one_open_per_bed
+     ON bed_assignments (bed_id)
+     WHERE end_date IS NULL;
    ```
-   Một giường chỉ có tối đa một assignment đang mở. Ràng buộc này bắt được cả race condition mà logic ứng dụng bỏ sót.
+   Một giường chỉ có tối đa một assignment đang mở. Ràng buộc này bắt được cả race condition mà logic ứng dụng bỏ sót — Postgres chặn ở mức constraint, không cần transaction đặc biệt để đảm bảo.
 
-4. **Chuyển chi nhánh xử lý được.** Assignment mới có `branchId` khác → doanh thu tự phân bổ đúng chi nhánh, không cần logic riêng.
+4. **Chuyển chi nhánh xử lý được.** Assignment mới có `branch_id` khác → doanh thu tự phân bổ đúng chi nhánh, không cần logic riêng.
 
-**Nếu làm sai** (nhét `bedId` vào `contracts`):
+**Nếu làm sai** (nhét `bed_id` vào `contracts`):
 - Chuyển phòng buộc phải tạo hợp đồng mới (sai về pháp lý) hoặc sửa hợp đồng đang chạy (mất lịch sử)
 - Mọi nơi tính tiền phải viết logic đặc biệt tra cứu log chuyển phòng
 - Báo cáo "giường này năm qua ai ở" gần như không làm được
@@ -184,84 +183,84 @@ erDiagram
 ```mermaid
 erDiagram
     BILLING_PERIODS {
-        ObjectId _id PK
-        ObjectId branchId FK
-        string code UK "2026-09"
-        date periodFrom
-        date periodTo
-        date dueDate
-        enum status
+        uuid id PK
+        uuid branch_id FK
+        text code UK "2026-09"
+        date period_from
+        date period_to
+        date due_date
+        text status
     }
 
     INVOICES {
-        ObjectId _id PK
-        string invoiceNo UK
-        ObjectId contractId FK
-        ObjectId customerId FK
-        ObjectId billingPeriodId FK
-        long grandTotal
-        long paidAmount
-        long balance
-        enum status
-        object snapshot "DONG BANG"
+        uuid id PK
+        text invoice_no UK
+        uuid contract_id FK
+        uuid customer_id FK
+        uuid billing_period_id FK
+        bigint grand_total
+        bigint paid_amount
+        bigint balance
+        text status
+        jsonb snapshot "DONG BANG"
     }
 
     INVOICE_LINES {
-        ObjectId _id PK
-        ObjectId invoiceId FK
-        enum lineType
-        string description
-        string calculationNote
-        long amount
-        string sourceType
-        ObjectId sourceId FK
+        uuid id PK
+        uuid invoice_id FK
+        text line_type
+        text description
+        text calculation_note
+        bigint amount
+        text source_type
+        uuid source_id FK
     }
 
     INVOICE_ADJUSTMENTS {
-        ObjectId _id PK
-        ObjectId invoiceId FK
-        long amount
-        string reason "BAT BUOC"
-        ObjectId requestedBy FK
-        ObjectId approvedBy FK
+        uuid id PK
+        uuid invoice_id FK
+        bigint amount
+        text reason "BAT BUOC"
+        uuid requested_by FK
+        uuid approved_by FK
     }
 
     PAYMENTS {
-        ObjectId _id PK
-        string paymentNo UK
-        ObjectId customerId FK
-        long amount
-        enum method
-        string idempotencyKey UK
-        string externalTxnId UK
-        ObjectId cashSessionId FK
-        enum status
+        uuid id PK
+        text payment_no UK
+        uuid customer_id FK
+        bigint amount
+        text method
+        text idempotency_key UK
+        text external_txn_id UK
+        uuid cash_session_id FK
+        text status
     }
 
     PAYMENT_ALLOCATIONS {
-        ObjectId _id PK
-        ObjectId paymentId FK
-        ObjectId invoiceId FK
-        long amount
+        uuid id PK
+        uuid payment_id FK
+        uuid invoice_id FK
+        bigint amount
     }
 
     DEPOSIT_LEDGER {
-        ObjectId _id PK
-        ObjectId contractId FK
-        enum entryType
-        long amount
-        long balanceAfter
-        string reason
+        uuid id PK
+        uuid contract_id FK
+        text entry_type
+        bigint amount
+        bigint balance_after
+        text reason
     }
 
     CASH_SESSIONS {
-        ObjectId _id PK
-        ObjectId staffId FK
-        long openingBalance
-        long systemTotal
-        long countedTotal
-        long variance
-        enum status
+        uuid id PK
+        uuid staff_id FK
+        bigint opening_balance
+        bigint system_total
+        bigint counted_total
+        bigint variance
+        text status
     }
 
     BILLING_PERIODS ||--o{ INVOICES : "sinh"
@@ -274,13 +273,15 @@ erDiagram
 
 ### Bốn nguyên tắc đọc từ sơ đồ này
 
-1. **`INVOICES` có `snapshot`** — đóng băng tên khách, phòng, giá tại thời điểm phát hành. In lại hóa đơn cũ ra đúng nội dung cũ.
+1. **`INVOICES` có `snapshot`** — đóng băng tên khách, phòng, giá tại thời điểm phát hành. Xem lại hóa đơn cũ vẫn ra đúng nội dung cũ (không có file PDF lưu sẵn, nhưng dữ liệu hiển thị luôn đúng lịch sử nhờ snapshot này).
 
 2. **`INVOICE_ADJUSTMENTS` tồn tại vì hóa đơn `ISSUED` bất biến.** Không có API sửa hóa đơn. Điều chỉnh là bản ghi mới, có lý do bắt buộc, có người duyệt khác người đề xuất.
 
-3. **`PAYMENT_ALLOCATIONS` là bảng trung gian n-n** — một khoản trả nhiều hóa đơn, một hóa đơn nhận nhiều khoản. Không thể gắn `invoiceId` trực tiếp vào `payments`.
+3. **`PAYMENT_ALLOCATIONS` là bảng trung gian n-n** — một khoản trả nhiều hóa đơn, một hóa đơn nhận nhiều khoản. Không thể gắn `invoice_id` trực tiếp vào `payments`.
 
-4. **`DEPOSIT_LEDGER` là sổ cái, tách hoàn toàn khỏi doanh thu.** Mỗi thao tác một bút toán, có `balanceAfter` để đối chiếu. Cọc không bao giờ xuất hiện trong báo cáo doanh thu.
+4. **`DEPOSIT_LEDGER` là sổ cái, tách hoàn toàn khỏi doanh thu.** Mỗi thao tác một bút toán, có `balance_after` để đối chiếu. Cọc không bao giờ xuất hiện trong báo cáo doanh thu.
+
+5. **`external_txn_id`/`idempotency_key` là unique constraint thật ở Postgres** — nền tảng chống ghi trùng khi webhook VietQR/Casso/SePay gọi lại nhiều lần cho cùng một giao dịch (xem [11-architecture.md §11](11-architecture.md)).
 
 ---
 
@@ -289,40 +290,40 @@ erDiagram
 ```mermaid
 erDiagram
     USERS {
-        ObjectId _id PK
-        string email UK
-        string phone UK
-        enum userType "STAFF | TENANT"
-        ObjectId staffId FK
-        ObjectId customerId FK
-        enum status
+        uuid id PK "= Supabase Auth user id"
+        text email UK
+        text phone UK
+        text user_type "STAFF | TENANT"
+        uuid staff_id FK
+        uuid customer_id FK
+        text status
     }
 
     ROLES {
-        ObjectId _id PK
-        string code UK
-        string name
-        array permissions
-        object limits
-        boolean isSystem
+        uuid id PK
+        text code UK
+        text name
+        text[] permissions
+        jsonb limits
+        boolean is_system
     }
 
     USER_ROLE_ASSIGNMENTS {
-        ObjectId _id PK
-        ObjectId userId FK
-        ObjectId roleId FK
-        enum scope "ALL | BRANCH"
-        array branchIds
-        date validFrom
-        date validUntil "quyen tam thoi"
+        uuid id PK
+        uuid user_id FK
+        uuid role_id FK
+        text scope "ALL | BRANCH"
+        uuid[] branch_ids
+        date valid_from
+        date valid_until "quyen tam thoi"
     }
 
     BRANCHES {
-        ObjectId _id PK
-        string code UK
-        string name
-        object approvalLimits
-        enum status
+        uuid id PK
+        text code UK
+        text name
+        jsonb approval_limits
+        text status
     }
 
     USERS ||--o{ USER_ROLE_ASSIGNMENTS : "được gán"
@@ -332,10 +333,10 @@ erDiagram
 
 Ba lớp kiểm soát rút ra từ sơ đồ:
 - **Permission** (`roles.permissions`) — được làm hành động gì
-- **Scope** (`user_role_assignments.scope` + `branchIds`) — trên dữ liệu chi nhánh nào
-- **Limit** (`roles.limits` + `branches.approvalLimits`) — trong hạn mức nào
+- **Scope** (`user_role_assignments.scope` + `branch_ids`) — trên dữ liệu chi nhánh nào, cưỡng chế bằng **Row-Level Security** ở Postgres
+- **Limit** (`roles.limits` + `branches.approval_limits`) — trong hạn mức nào
 
-Ba lớp này đều kiểm tra ở backend. Xem [11-architecture.md §2 D5](11-architecture.md).
+Ba lớp này đều kiểm tra ở backend (lớp Scope còn được database tự chặn thêm qua RLS). Xem [11-architecture.md §2 D5](11-architecture.md).
 
 ---
 
@@ -344,28 +345,28 @@ Ba lớp này đều kiểm tra ở backend. Xem [11-architecture.md §2 D5](11-
 ```mermaid
 erDiagram
     UTILITY_METERS {
-        ObjectId _id PK
-        string code UK
-        enum type "ELECTRIC | WATER"
-        enum scope "ROOM | SHARED_GROUP | BUILDING_MAIN"
-        array roomIds
-        object sharingRule
-        int maxReading
-        enum status
+        uuid id PK
+        text code UK
+        text type "ELECTRIC | WATER"
+        text scope "ROOM | SHARED_GROUP | BUILDING_MAIN"
+        uuid[] room_ids
+        jsonb sharing_rule
+        int max_reading
+        text status
     }
 
     UTILITY_READINGS {
-        ObjectId _id PK
-        ObjectId meterId FK
-        ObjectId billingPeriodId FK
-        number previousReading
-        number currentReading
-        number consumption
-        long unitPrice "SNAPSHOT"
-        string photoUrl "BAT BUOC"
-        enum status
-        boolean isAbnormal
-        ObjectId adjustedFromReadingId FK
+        uuid id PK
+        uuid meter_id FK
+        uuid billing_period_id FK
+        numeric previous_reading
+        numeric current_reading
+        numeric consumption
+        bigint unit_price "SNAPSHOT"
+        text photo_url "BAT BUOC"
+        text status
+        boolean is_abnormal
+        uuid adjusted_from_reading_id FK
     }
 
     ROOMS ||--o{ UTILITY_METERS : "gắn đồng hồ riêng"
@@ -375,7 +376,7 @@ erDiagram
     UTILITY_READINGS ||--o{ INVOICE_LINES : "tính thành"
 ```
 
-Điểm quan trọng: `unitPrice` snapshot trong `utility_readings`, và cũng snapshot trong `contracts`. Tăng giá điện không ảnh hưởng hồi tố các kỳ đã tính.
+Điểm quan trọng: `unit_price` snapshot trong `utility_readings`, và cũng snapshot trong `contracts`. Tăng giá điện không ảnh hưởng hồi tố các kỳ đã tính.
 
 Đồng hồ tổng tòa nhà (`scope = BUILDING_MAIN`) dùng để đối chiếu với tổng các phòng — chênh lệch lớn là dấu hiệu rò rỉ hoặc câu trộm.
 
@@ -386,56 +387,56 @@ erDiagram
 ```mermaid
 erDiagram
     MAINTENANCE_TICKETS {
-        ObjectId _id PK
-        string ticketNo UK
-        ObjectId roomId FK
-        ObjectId assetId FK
-        enum category
-        enum priority
-        date slaResolveDeadline
-        int pausedDurationMinutes
-        ObjectId assignedTo FK
-        enum status
-        long totalCost
-        boolean chargeToTenant
+        uuid id PK
+        text ticket_no UK
+        uuid room_id FK
+        uuid asset_id FK
+        text category
+        text priority
+        date sla_resolve_deadline
+        int paused_duration_minutes
+        uuid assigned_to FK
+        text status
+        bigint total_cost
+        boolean charge_to_tenant
     }
 
     ASSETS {
-        ObjectId _id PK
-        string assetCode UK
-        string name
-        ObjectId roomId FK
-        date warrantyUntil
-        enum condition
-        enum status
-        int repairCount
-        long totalRepairCost
+        uuid id PK
+        text asset_code UK
+        text name
+        uuid room_id FK
+        date warranty_until
+        text condition
+        text status
+        int repair_count
+        bigint total_repair_cost
     }
 
     ASSET_EVENTS {
-        ObjectId _id PK
-        ObjectId assetId FK
-        enum eventType
+        uuid id PK
+        uuid asset_id FK
+        text event_type
         date at
-        long cost
+        bigint cost
     }
 
     HOUSE_RULES {
-        ObjectId _id PK
-        string version
-        array penaltyRules
-        date effectiveFrom
+        uuid id PK
+        text version
+        jsonb[] penalty_rules
+        date effective_from
     }
 
     VIOLATIONS {
-        ObjectId _id PK
-        string violationNo UK
-        ObjectId customerId FK
-        string ruleCode
-        array evidence "BAT BUOC"
-        long penaltyAmount
-        enum status
-        ObjectId chargedInvoiceId FK
+        uuid id PK
+        text violation_no UK
+        uuid customer_id FK
+        text rule_code
+        text[] evidence "BAT BUOC"
+        bigint penalty_amount
+        text status
+        uuid charged_invoice_id FK
     }
 
     ROOMS ||--o{ ASSETS : "chứa"
@@ -465,18 +466,18 @@ erDiagram
 | customers | bookings | 1-n | |
 | bookings | contracts | 1-0..1 | |
 | customers | contracts | 1-n | Theo thời gian |
-| contracts | contracts | 1-0..1 | Gia hạn (`previousContractId`) |
+| contracts | contracts | 1-0..1 | Gia hạn (`previous_contract_id`) |
 | **contracts** | **bed_assignments** | **1-n** | ★ Quan hệ then chốt |
 | **beds** | **bed_assignments** | **1-n** | ★ Lịch sử người ở |
 | billing_periods | invoices | 1-n | |
-| contracts | invoices | 1-n | Unique theo `(contractId, billingPeriodId)` |
+| contracts | invoices | 1-n | Unique theo `(contract_id, billing_period_id)` |
 | invoices | invoice_lines | 1-n | |
 | invoices | invoice_adjustments | 1-n | |
 | **payments ↔ invoices** | payment_allocations | **n-n** | ★ Bảng trung gian |
 | cash_sessions | payments | 1-n | Chỉ payment tiền mặt |
 | contracts | deposit_ledger | 1-n | Sổ cái |
 | rooms | utility_meters | 1-n | Có thể dùng chung |
-| utility_meters | utility_readings | 1-n | Unique theo `(meterId, billingPeriodId)` |
+| utility_meters | utility_readings | 1-n | Unique theo `(meter_id, billing_period_id)` |
 | branches | services | 1-n | Cấu hình riêng từng chi nhánh |
 | contracts | service_subscriptions | 1-n | |
 | rooms | assets | 1-n | |

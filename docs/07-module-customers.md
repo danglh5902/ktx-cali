@@ -58,7 +58,7 @@ Hồ sơ trung tâm của mọi nghiệp vụ. Phải trả lời được tức
 | Tab | Nội dung |
 |---|---|
 | **Tổng quan** | Thông tin cơ bản · phòng/giường hiện tại · hợp đồng hiện tại · **số nợ hiện tại** (nổi bật) · cảnh báo (vi phạm, blacklist) |
-| **Hợp đồng** | Tất cả hợp đồng theo thời gian, tải PDF |
+| **Hợp đồng** | Tất cả hợp đồng theo thời gian, xem nội dung (in trực tiếp từ màn hình khi cần) |
 | **Lịch sử lưu trú** | Từ `bed_assignments`: từng ở giường nào, từ ngày nào, lý do chuyển |
 | **Hóa đơn** | Danh sách theo kỳ, trạng thái, số dư |
 | **Thanh toán** | Lịch sử thu tiền, phương thức, người thu |

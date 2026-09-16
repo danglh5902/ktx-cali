@@ -164,11 +164,11 @@ sequenceDiagram
         HT->>HT: audit_logs
     end
 
-    LT->>HT: Xuất PDF (render template + biến)
-    HT-->>LT: File PDF
-    LT->>KH: In, đọc, ký
+    LT->>HT: Mở màn hình xem hợp đồng (render template + biến)
+    HT-->>LT: Hiển thị nội dung hợp đồng
+    LT->>KH: In từ trình duyệt, đọc, ký
     KH-->>LT: Bản đã ký
-    LT->>HT: Upload bản ký (signedPdfUrl)
+    LT->>HT: Upload ảnh bản ký (signedDocumentImage, Cloudinary)
     Note over HT: Hợp đồng chỉ ACTIVE khi check-in
 ```
 
@@ -386,7 +386,7 @@ sequenceDiagram
         HT->>HT: 7. audit_logs
         end
 
-        HT->>KH: PDF hợp đồng mới để ký
+        HT->>KH: Hợp đồng mới để xem và ký (in trực tiếp từ màn hình khi cần)
     else Khách không gia hạn
         LT->>HT: Đánh dấu sẽ trả phòng
         HT->>HT: Giường → CHECKOUT_PENDING (bán được cho ngày sau)
@@ -594,4 +594,4 @@ sequenceDiagram
 | Gia hạn hợp đồng | 7 | Hở ngày giữa hai hợp đồng, cọc mất dấu |
 | Hoàn cọc | 4 | Chi tiền mà sổ cọc không ghi |
 
-Đây là lý do **MongoDB replica set là bắt buộc**, không phải tùy chọn.
+Đây là lý do transaction là yêu cầu bắt buộc cho các luồng trên — Postgres/Supabase hỗ trợ sẵn, không cần hạ tầng đặc biệt (xem [11-architecture.md §2 D6](11-architecture.md)).

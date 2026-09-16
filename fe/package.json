@@ -1,0 +1,6 @@
+{
+  "name": "ktx-cali-fe",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Placeholder — chưa scaffold. Sẽ dùng Vite + React 19 + TypeScript theo docs/11-architecture.md §1.1. Xây sau khi BE ổn định. Độc lập với be/ — deploy riêng."
+}

@@ -5,7 +5,7 @@ Bộ tài liệu phân tích nghiệp vụ và thiết kế hệ thống quản 
 > **Trạng thái:** Bản 1.0 — 15/09/2026
 > **Phạm vi hiện tại:** 1–3 chi nhánh, <500 giường. Thiết kế để mở rộng tới 50 chi nhánh.
 > **Khách thuê chính:** sinh viên và người đi làm/chuyên viên trẻ.
-> **Stack:** Vite + React + TypeScript (SPA) · Node.js + TypeScript + Mongoose (API) · MongoDB replica set.
+> **Stack:** Vite + React + TypeScript (SPA) · Node.js + TypeScript + Fastify + Drizzle/Prisma (API) · Supabase (PostgreSQL + Auth) · Cloudinary (ảnh) · VietQR/webhook ngân hàng (thanh toán). `be/` và `fe/` là 2 thư mục độc lập, tự cài & deploy riêng.
 
 ---
 
@@ -68,8 +68,8 @@ Bộ tài liệu phân tích nghiệp vụ và thiết kế hệ thống quản 
 2. **Tách `contracts` khỏi `bed_assignments`.** Hợp đồng là quan hệ pháp lý; assignment là đoạn ở thực tế. Đây là quyết định quan trọng nhất của toàn hệ thống. → [11](11-architecture.md), [12](12-database-schema.md)
 3. **Tiền cọc là công nợ phải trả, không phải doanh thu.** Có sổ cọc riêng. → [09](09-module-billing.md)
 4. **Tiền lưu dạng số nguyên VNĐ (Int64).** Không bao giờ dùng float. → [11](11-architecture.md)
-5. **MongoDB không có RLS** → phân quyền chi nhánh cưỡng chế ở tầng repository + test bắt buộc. → [11](11-architecture.md)
-6. **Bắt buộc replica set** để có multi-document transaction. Standalone không dùng được. → [11](11-architecture.md)
+5. **Postgres/Supabase có Row-Level Security native** → phân quyền chi nhánh cưỡng chế ở tầng database, kèm test phân quyền bắt buộc (defense in depth). → [11](11-architecture.md)
+6. **Transaction là mặc định của Postgres** — không cần cụm/replica set để đảm bảo atomic cho check-in, check-out, sinh hóa đơn... → [11](11-architecture.md)
 7. **Không ai được sửa hóa đơn đã phát hành** — chỉ tạo bút toán điều chỉnh có phê duyệt. → [04](04-roles-permissions.md), [09](09-module-billing.md)
 8. **Owner là read-only.** → [04](04-roles-permissions.md)
 9. **Két tiền mặt theo ca lễ tân** — không có thì không kiểm soát được tiền mặt. → [09](09-module-billing.md)

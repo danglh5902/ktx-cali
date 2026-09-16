@@ -1,841 +1,858 @@
-# 12 — Database Schema (MongoDB)
+# 12 — Database Schema (PostgreSQL / Supabase)
 
 ## Quy ước chung
 
 | Quy ước | Chi tiết |
 |---|---|
-| **Khóa chính** | `_id: ObjectId` ở mọi collection |
-| **Đa tổ chức** | `orgId: ObjectId` ở mọi collection nghiệp vụ |
-| **Phân chi nhánh** | `branchId: ObjectId` **denormalized** xuống mọi collection nghiệp vụ, kể cả cấp con |
-| **Tiền** | `Long` (Int64), đơn vị **đồng**. Ký hiệu `VND` dưới đây |
-| **Ngày thuần** | `startDate`, `endDate`... lưu `Date` đặt tại 00:00 giờ VN |
-| **Xóa mềm** | `deletedAt: Date \| null` — mọi truy vấn lọc `deletedAt: null` |
-| **Audit cơ bản** | `createdAt`, `createdBy`, `updatedAt`, `updatedBy` |
-| **Mã chứng từ** | Sinh từ collection `counters`, có tiền tố chi nhánh |
-| **Index** | `branchId` (hoặc `orgId`) luôn ở **vị trí đầu** compound index |
+| **Khóa chính** | `id: uuid default gen_random_uuid()` ở mọi bảng |
+| **Đa tổ chức** | `org_id: uuid` (FK → `organizations`) ở mọi bảng nghiệp vụ |
+| **Phân chi nhánh** | `branch_id: uuid` (FK → `branches`) ở mọi bảng nghiệp vụ, kể cả cấp con — dùng cho index và RLS policy |
+| **Row-Level Security** | Mọi bảng nghiệp vụ `ENABLE ROW LEVEL SECURITY` + policy lọc theo `org_id`/`branch_id` từ biến phiên (`current_setting('app.*')`) — xem [11-architecture.md §2 D5](11-architecture.md) |
+| **Tiền** | `bigint`, đơn vị **đồng**. Ký hiệu `VND` dưới đây |
+| **Ngày thuần** | `start_date`, `end_date`... kiểu `date` (không có giờ) |
+| **Xóa mềm** | `deleted_at: timestamptz null` — partial index `WHERE deleted_at IS NULL`, mọi truy vấn lọc theo đó |
+| **Audit cơ bản** | `created_at`, `created_by`, `updated_at`, `updated_by` |
+| **Mã chứng từ** | Sinh từ bảng `counters`, có tiền tố chi nhánh, dùng `SELECT ... FOR UPDATE` hoặc `INSERT ... ON CONFLICT DO UPDATE RETURNING` để an toàn khi đồng thời |
+| **Index** | `branch_id` (hoặc `org_id`) luôn ở **vị trí đầu** compound index |
+| **Kiểu liệt kê (enum)** | Dùng Postgres `enum` type hoặc `text` + `CHECK constraint`, tùy độ ổn định của tập giá trị |
 
 ---
 
 ## Nhóm 1 — Tổ chức & Phân quyền
 
 ### `organizations`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `_id` | ObjectId | PK |
-| `code` | String | unique |
-| `name` | String | |
-| `taxCode` | String | MST |
-| `address`, `phone`, `email` | String | |
-| `logo` | String | URL |
-| `settings` | Object | Cấu hình mặc định cấp tổ chức |
-| `status` | Enum | `ACTIVE` / `SUSPENDED` |
+| `id` | uuid | PK |
+| `code` | text | unique |
+| `name` | text | |
+| `tax_code` | text | MST |
+| `address`, `phone`, `email` | text | |
+| `logo` | text | URL Cloudinary |
+| `settings` | jsonb | Cấu hình mặc định cấp tổ chức |
+| `status` | text | `ACTIVE` / `SUSPENDED` |
 
-**Index:** `{code}` unique
+**Index:** `(code)` unique
 
 ---
 
 ### `branches`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId` | ObjectId | FK → organizations |
-| `code` | String | **Bất biến.** Dùng làm tiền tố mã chứng từ |
-| `name`, `shortName` | String | |
-| `address` | Object | `{street, ward, district, province}` |
-| `geo` | Object | `{lat, lng}` |
-| `region` | String | Chuẩn bị cho báo cáo theo vùng |
-| `phone`, `email`, `zaloOaId` | String | |
-| `managerId` | ObjectId | FK → users |
-| `openingHours` | Object | |
-| `curfewTime` | String | `"23:00"` |
-| `genderPolicy` | Enum | `MALE` / `FEMALE` / `MIXED` |
-| `billingDayOfMonth` | Int | Ngày chốt kỳ |
-| `dueDayOfMonth` | Int | Hạn thanh toán |
-| `lateFeePolicy` | Object | `{graceDays, feeType, feeValue, maxFee}` |
-| `depositPolicy` | Object | `{months, refundDays, cancelPolicy[]}` |
-| `approvalLimits` | Object | `{discount, refund, writeOff, expense, cashVariance}` — VND |
-| `electricityPrice`, `waterPrice` | VND | Đơn giá hiện hành |
-| `utilityBillingMode` | Object | `{electric: 'METER'\|'PER_PERSON'\|'INCLUDED', water: ...}` |
-| `waterPerPersonAmount` | VND | Khi tính theo đầu người |
-| `amenities[]`, `images[]`, `description`, `notes` | | |
-| `status` | Enum | `ACTIVE` / `INACTIVE` / `ARCHIVED` |
-| `openedAt`, `closedAt` | Date | |
+| `org_id` | uuid | FK → organizations |
+| `code` | text | **Bất biến.** Dùng làm tiền tố mã chứng từ |
+| `name`, `short_name` | text | |
+| `address` | jsonb | `{street, ward, district, province}` |
+| `geo` | jsonb | `{lat, lng}` |
+| `region` | text | Chuẩn bị cho báo cáo theo vùng |
+| `phone`, `email`, `zalo_oa_id` | text | |
+| `manager_id` | uuid | FK → users |
+| `opening_hours` | jsonb | |
+| `curfew_time` | text | `"23:00"` |
+| `gender_policy` | text | `MALE` / `FEMALE` / `MIXED` |
+| `billing_day_of_month` | int | Ngày chốt kỳ |
+| `due_day_of_month` | int | Hạn thanh toán |
+| `late_fee_policy` | jsonb | `{graceDays, feeType, feeValue, maxFee}` |
+| `deposit_policy` | jsonb | `{months, refundDays, cancelPolicy[]}` |
+| `approval_limits` | jsonb | `{discount, refund, writeOff, expense, cashVariance}` — VND |
+| `electricity_price`, `water_price` | bigint | Đơn giá hiện hành |
+| `utility_billing_mode` | jsonb | `{electric: 'METER'|'PER_PERSON'|'INCLUDED', water: ...}` |
+| `water_per_person_amount` | bigint | Khi tính theo đầu người |
+| `amenities` | text[] | |
+| `images` | text[] | URL Cloudinary |
+| `description`, `notes` | text | |
+| `status` | text | `ACTIVE` / `INACTIVE` / `ARCHIVED` |
+| `opened_at`, `closed_at` | date | |
 
-**Index:** `{orgId, code}` unique · `{orgId, status}` · `{managerId}` · `{orgId, region}`
+**Index:** `(org_id, code)` unique · `(org_id, status)` · `(manager_id)` · `(org_id, region)`
 
 ---
 
 ### `buildings`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId` | ObjectId | |
-| `code`, `name` | String | |
-| `genderPolicy` | Enum | |
-| `hasElevator` | Boolean | |
-| `amenities[]` | String[] | |
-| `monthlyRentCost` | VND | Chi phí thuê mặt bằng — đầu vào P&L |
-| `mainElectricMeterId`, `mainWaterMeterId` | ObjectId | Đồng hồ tổng |
-| `address` | String | Nếu khác địa chỉ chi nhánh |
-| `images[]`, `notes` | | |
-| `status` | Enum | `ACTIVE` / `RENOVATING` / `INACTIVE` |
+| `org_id`, `branch_id` | uuid | |
+| `code`, `name` | text | |
+| `gender_policy` | text | |
+| `has_elevator` | boolean | |
+| `amenities` | text[] | |
+| `monthly_rent_cost` | bigint | Chi phí thuê mặt bằng — đầu vào P&L |
+| `main_electric_meter_id`, `main_water_meter_id` | uuid | FK → utility_meters |
+| `address` | text | Nếu khác địa chỉ chi nhánh |
+| `images` | text[] | |
+| `notes` | text | |
+| `status` | text | `ACTIVE` / `RENOVATING` / `INACTIVE` |
 
-**Index:** `{branchId, code}` unique · `{branchId, status}`
+**Index:** `(branch_id, code)` unique · `(branch_id, status)`
 
 ---
 
 ### `floors`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId`, `buildingId` | ObjectId | |
-| `number` | **String** | `"1"`, `"G"`, `"L"` — không phải Int |
-| `sortOrder` | Int | Để sắp xếp đúng |
-| `name` | String | |
-| `genderPolicy` | Enum | Override của tòa |
-| `layoutImage` | String | |
-| `status` | Enum | |
+| `org_id`, `branch_id`, `building_id` | uuid | |
+| `number` | text | `"1"`, `"G"`, `"L"` — không phải int |
+| `sort_order` | int | Để sắp xếp đúng |
+| `name` | text | |
+| `gender_policy` | text | Override của tòa |
+| `layout_image` | text | URL Cloudinary |
+| `status` | text | |
 
-**Index:** `{buildingId, number}` unique · `{branchId, sortOrder}`
+**Index:** `(building_id, number)` unique · `(branch_id, sort_order)`
 
 ---
 
 ### `room_types`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId` | ObjectId | **Định nghĩa theo chi nhánh** |
-| `code`, `name` | String | |
-| `capacity` | Int | |
-| `basePrice` | VND | Giá giường cơ bản |
-| `wholeRoomPrice` | VND | Giá thuê nguyên phòng |
-| `defaultAmenities[]` | String[] | |
-| `description` | String | |
-| `status` | Enum | |
+| `org_id`, `branch_id` | uuid | **Định nghĩa theo chi nhánh** |
+| `code`, `name` | text | |
+| `capacity` | int | |
+| `base_price` | bigint | Giá giường cơ bản |
+| `whole_room_price` | bigint | Giá thuê nguyên phòng |
+| `default_amenities` | text[] | |
+| `description` | text | |
+| `status` | text | |
 
-**Index:** `{branchId, code}` unique
+**Index:** `(branch_id, code)` unique
 
 ---
 
 ### `rooms`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId`, `buildingId`, `floorId` | ObjectId | Tất cả denormalized |
-| `code` | String | unique theo `branchId` |
-| `name` | String | |
-| `roomTypeId` | ObjectId | |
-| `capacity` | Int | Trần số người |
-| `actualBedCount` | Int | Dẫn xuất, cập nhật khi thêm/bớt giường |
-| `areaM2` | Number | |
-| `priceOverride` | VND \| null | |
-| `wholeRoomPrice` | VND \| null | |
-| `amenities[]` | String[] | `AIR_CON`, `PRIVATE_TOILET`, `WATER_HEATER`, `BALCONY`, `WARDROBE`, `DESK`, `FRIDGE`, `WASHING_MACHINE`, `WINDOW`, `FAN`, `TV` |
-| `hasPrivateToilet` | Boolean | Tách riêng vì ảnh hưởng giá lớn |
-| `direction` | String | |
-| `electricMeterId`, `waterMeterId` | ObjectId \| null | |
-| `sharedMeterGroupId` | ObjectId \| null | Khi dùng chung đồng hồ |
-| `images[]`, `notes` | | |
-| `status` | Enum | `ACTIVE` / `MAINTENANCE` / `RENOVATING` / `INACTIVE` |
+| `org_id`, `branch_id`, `building_id`, `floor_id` | uuid | Tất cả denormalized (FK thật) |
+| `code` | text | unique theo `branch_id` |
+| `name` | text | |
+| `room_type_id` | uuid | FK → room_types |
+| `capacity` | int | Trần số người |
+| `actual_bed_count` | int | Dẫn xuất, cập nhật khi thêm/bớt giường |
+| `area_m2` | numeric | |
+| `price_override` | bigint null | |
+| `whole_room_price` | bigint null | |
+| `amenities` | text[] | `AIR_CON`, `PRIVATE_TOILET`, `WATER_HEATER`, `BALCONY`, `WARDROBE`, `DESK`, `FRIDGE`, `WASHING_MACHINE`, `WINDOW`, `FAN`, `TV` |
+| `has_private_toilet` | boolean | Tách riêng vì ảnh hưởng giá lớn |
+| `direction` | text | |
+| `electric_meter_id`, `water_meter_id` | uuid null | FK → utility_meters |
+| `shared_meter_group_id` | uuid null | Khi dùng chung đồng hồ |
+| `images` | text[] | |
+| `notes` | text | |
+| `status` | text | `ACTIVE` / `MAINTENANCE` / `RENOVATING` / `INACTIVE` |
 
-**Index:** `{branchId, code}` unique · `{floorId}` · `{branchId, status}` · `{roomTypeId}` · `{electricMeterId}`
+**Index:** `(branch_id, code)` unique · `(floor_id)` · `(branch_id, status)` · `(room_type_id)` · `(electric_meter_id)`
 
 ---
 
 ### `beds`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId`, `buildingId`, `floorId`, `roomId` | ObjectId | **Tất cả denormalized** để vẽ sơ đồ 1 truy vấn |
-| `code` | String | unique theo `branchId` |
-| `label` | String | "Giường tầng dưới cạnh cửa sổ" |
-| `bedType` | Enum | `SINGLE` / `BUNK_LOWER` / `BUNK_UPPER` / `DOUBLE` |
-| `priceOverride` | VND \| null | |
-| `status` | Enum | `AVAILABLE` / `RESERVED` / `OCCUPIED` / `CHECKOUT_PENDING` / `CLEANING` / `MAINTENANCE` / `BLOCKED` |
-| `currentAssignmentId` | ObjectId \| null | |
-| `blockedReason`, `blockedUntil` | String, Date | |
-| `notes` | String | |
+| `org_id`, `branch_id`, `building_id`, `floor_id`, `room_id` | uuid | **Tất cả denormalized** để vẽ sơ đồ 1 truy vấn |
+| `code` | text | unique theo `branch_id` |
+| `label` | text | "Giường tầng dưới cạnh cửa sổ" |
+| `bed_type` | text | `SINGLE` / `BUNK_LOWER` / `BUNK_UPPER` / `DOUBLE` |
+| `price_override` | bigint null | |
+| `status` | text | `AVAILABLE` / `RESERVED` / `OCCUPIED` / `CHECKOUT_PENDING` / `CLEANING` / `MAINTENANCE` / `BLOCKED` |
+| `current_assignment_id` | uuid null | FK → bed_assignments |
+| `blocked_reason`, `blocked_until` | text, timestamptz | |
+| `notes` | text | |
 
-**Index:** `{branchId, code}` unique · `{roomId, status}` · `{branchId, status}` · `{floorId, status}` · `{currentAssignmentId}`
+**Index:** `(branch_id, code)` unique · `(room_id, status)` · `(branch_id, status)` · `(floor_id, status)` · `(current_assignment_id)`
 
 ---
 
 ### `users`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId` | ObjectId | |
-| `email` | String | unique — tài khoản đăng nhập nhân viên |
-| `phone` | String | unique sparse — đăng nhập khách thuê |
-| `passwordHash` | String | argon2id |
-| `userType` | Enum | `STAFF` / `TENANT` |
-| `staffId` \| `customerId` | ObjectId | Trỏ tới hồ sơ tương ứng |
-| `fullName`, `avatar` | String | |
-| `status` | Enum | `ACTIVE` / `INACTIVE` / `LOCKED` |
-| `mustChangePassword` | Boolean | |
-| `lastLoginAt`, `lastLoginIp` | | |
-| `failedLoginCount`, `lockedUntil` | | |
-| `twoFactorEnabled`, `twoFactorSecret` | | Phase 3 |
-| `notificationPreferences` | Object | |
+| `id` | uuid | **= Supabase Auth user id** (bảng này mở rộng `auth.users` bằng 1-1, không tự sinh id riêng) |
+| `org_id` | uuid | |
+| `email` | text | unique — tài khoản đăng nhập nhân viên |
+| `phone` | text | unique nullable — đăng nhập khách thuê (Supabase Auth Phone OTP) |
+| `user_type` | text | `STAFF` / `TENANT` |
+| `staff_id` \| `customer_id` | uuid | Trỏ tới hồ sơ tương ứng |
+| `full_name`, `avatar` | text | |
+| `status` | text | `ACTIVE` / `INACTIVE` / `LOCKED` |
+| `must_change_password` | boolean | |
+| `last_login_at`, `last_login_ip` | | |
+| `failed_login_count`, `locked_until` | | |
+| `two_factor_enabled` | boolean | Phase 3 — dùng Supabase Auth MFA |
+| `notification_preferences` | jsonb | |
 
-**Index:** `{email}` unique · `{phone}` unique sparse · `{orgId, userType, status}` · `{staffId}` · `{customerId}`
+**Index:** `(email)` unique · `(phone)` unique nullable · `(org_id, user_type, status)` · `(staff_id)` · `(customer_id)`
+
+> Mật khẩu, session, token và MFA do **Supabase Auth** quản lý (bảng `auth.users` nội bộ của Supabase) — không tự lưu `password_hash` trong bảng `users` của ứng dụng.
 
 ---
 
 ### `roles`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId` | ObjectId | |
-| `code`, `name`, `description` | String | |
-| `permissions[]` | String[] | Danh sách permission |
-| `limits` | Object | `{discountMax, refundApprovalMax, ...}` VND |
-| `isSystem` | Boolean | Không cho sửa/xóa |
-| `status` | Enum | |
+| `org_id` | uuid | |
+| `code`, `name`, `description` | text | |
+| `permissions` | text[] | Danh sách permission |
+| `limits` | jsonb | `{discountMax, refundApprovalMax, ...}` VND |
+| `is_system` | boolean | Không cho sửa/xóa |
+| `status` | text | |
 
-**Index:** `{orgId, code}` unique
+**Index:** `(org_id, code)` unique
 
 ---
 
 ### `user_role_assignments`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `userId`, `roleId` | ObjectId | |
-| `scope` | Enum | `ALL` / `BRANCH` |
-| `branchIds[]` | ObjectId[] | Khi `scope = BRANCH` |
-| `validFrom`, `validUntil` | Date | `validUntil = null` là vô thời hạn |
-| `grantedBy`, `grantedAt` | | |
-| `revokedBy`, `revokedAt`, `revokeReason` | | |
+| `org_id`, `user_id`, `role_id` | uuid | |
+| `scope` | text | `ALL` / `BRANCH` |
+| `branch_ids` | uuid[] | Khi `scope = BRANCH` |
+| `valid_from`, `valid_until` | timestamptz | `valid_until = null` là vô thời hạn |
+| `granted_by`, `granted_at` | | |
+| `revoked_by`, `revoked_at`, `revoke_reason` | | |
 
-**Index:** `{userId, validUntil}` · `{orgId, roleId}` · `{branchIds}`
+**Index:** `(user_id, valid_until)` · `(org_id, role_id)` · GIN trên `(branch_ids)`
+
+> `branch_ids` được nạp vào biến phiên Postgres (`app.allowed_branch_ids`) khi bắt đầu mỗi request — dùng trực tiếp trong RLS policy, xem [11-architecture.md §2 D5](11-architecture.md).
 
 ---
 
 ### `staff`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `employeeCode`, `fullName`, `dateOfBirth`, `gender`, `idNumber` |
+| `org_id`, `employee_code`, `full_name`, `date_of_birth`, `gender`, `id_number` |
 | `phone`, `email`, `address` |
 | `position`, `department` |
-| `branchIds[]`, `primaryBranchId` |
-| `hireDate`, `terminationDate`, `terminationReason` |
-| `emergencyContact` (Object) |
-| `documents[]` |
+| `branch_ids` (uuid[]), `primary_branch_id` |
+| `hire_date`, `termination_date`, `termination_reason` |
+| `emergency_contact` (jsonb) |
+| `documents` (jsonb[]) |
 | `status` — `ACTIVE` / `ON_LEAVE` / `SUSPENDED` / `TERMINATED` |
 
-**Index:** `{orgId, employeeCode}` unique · `{branchIds, status}` · `{idNumber}`
+**Index:** `(org_id, employee_code)` unique · GIN trên `(branch_ids)` + `(status)` · `(id_number)`
 
 ---
 
 ## Nhóm 2 — Khách thuê & Lưu trú
 
 ### `customers`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId` | ObjectId | |
-| `customerCode` | String | unique |
-| `fullName`, `dateOfBirth`, `gender` | | `gender` bắt buộc — dùng chặn xếp sai tòa |
-| `idType` | Enum | `CCCD` / `CMND` / `PASSPORT` / `BIRTH_CERT` |
-| `idNumber` | String | unique theo `orgId` (cảnh báo nếu trùng) |
-| `idIssueDate`, `idIssuePlace` | | Cần cho tạm trú |
-| `phone` | String | Chuẩn hóa `+84...` |
-| `phoneHistory[]` | String[] | Số cũ — để đối soát chuyển khoản cũ |
-| `email`, `zaloPhone` | String | |
-| `permanentAddress` | Object | Bắt buộc cho tạm trú |
-| `hometown` | String | |
-| `emergencyContact` | Object | `{name, relationship, phone, address}` — bắt buộc |
-| `secondaryContact` | Object | |
-| `payer` | Object | `{name, phone, relationship, bankAccount}` — **người trả tiền ≠ người ở** |
-| `occupation` | Enum | `STUDENT` / `EMPLOYEE` / `OTHER` |
-| `school`, `company`, `studentId` | String | Phân tích nguồn khách |
-| `photo`, `idFrontImage`, `idBackImage` | String | **Dữ liệu nhạy cảm** — presigned URL |
-| `otherDocuments[]` | | |
-| `currentBranchId`, `currentRoomId`, `currentBedId` | ObjectId | Denormalized để tra cứu nhanh |
-| `currentContractId` | ObjectId | |
-| `creditBalance` | VND | Số dư trả thừa |
-| `status` | Enum | `PROSPECT` / `RESERVED` / `ACTIVE` / `EXPIRING` / `CHECKED_OUT` / `CHECKED_OUT_WITH_DEBT` / `SUSPENDED` / `BLACKLISTED` |
-| `isBlacklisted`, `blacklistReason`, `blacklistedAt` | | |
-| `temporaryResidenceStatus` | Enum | `NOT_REGISTERED` / `PENDING` / `REGISTERED` |
-| `source` | String | Nguồn khách |
-| `preferences`, `internalNotes` | String | |
-| `mergedIntoCustomerId` | ObjectId | Khi gộp hồ sơ trùng |
-| `anonymizedAt` | Date | Khi ẩn danh hóa |
+| `org_id` | uuid | |
+| `customer_code` | text | unique |
+| `full_name`, `date_of_birth`, `gender` | | `gender` bắt buộc — dùng chặn xếp sai tòa |
+| `id_type` | text | `CCCD` / `CMND` / `PASSPORT` / `BIRTH_CERT` |
+| `id_number` | text | unique theo `org_id` (cảnh báo nếu trùng) |
+| `id_issue_date`, `id_issue_place` | | Cần cho tạm trú |
+| `phone` | text | Chuẩn hóa `+84...` |
+| `phone_history` | text[] | Số cũ — để đối soát chuyển khoản cũ |
+| `email`, `zalo_phone` | text | |
+| `permanent_address` | jsonb | Bắt buộc cho tạm trú |
+| `hometown` | text | |
+| `emergency_contact` | jsonb | `{name, relationship, phone, address}` — bắt buộc |
+| `secondary_contact` | jsonb | |
+| `payer` | jsonb | `{name, phone, relationship, bankAccount}` — **người trả tiền ≠ người ở** |
+| `occupation` | text | `STUDENT` / `EMPLOYEE` / `OTHER` |
+| `school`, `company`, `student_id` | text | Phân tích nguồn khách |
+| `photo`, `id_front_image`, `id_back_image` | text | **Dữ liệu nhạy cảm** — Cloudinary signed URL |
+| `other_documents` | jsonb[] | |
+| `current_branch_id`, `current_room_id`, `current_bed_id` | uuid | Denormalized để tra cứu nhanh |
+| `current_contract_id` | uuid | |
+| `credit_balance` | bigint | Số dư trả thừa |
+| `status` | text | `PROSPECT` / `RESERVED` / `ACTIVE` / `EXPIRING` / `CHECKED_OUT` / `CHECKED_OUT_WITH_DEBT` / `SUSPENDED` / `BLACKLISTED` |
+| `is_blacklisted`, `blacklist_reason`, `blacklisted_at` | | |
+| `temporary_residence_status` | text | `NOT_REGISTERED` / `PENDING` / `REGISTERED` |
+| `source` | text | Nguồn khách |
+| `preferences`, `internal_notes` | text | |
+| `merged_into_customer_id` | uuid | Khi gộp hồ sơ trùng |
+| `anonymized_at` | timestamptz | Khi ẩn danh hóa |
 
-**Index:** `{orgId, customerCode}` unique · `{orgId, idNumber}` unique sparse · `{orgId, phone}` · `{currentBranchId, status}` · `{fullName}` text · `{orgId, status}`
+**Index:** `(org_id, customer_code)` unique · `(org_id, id_number)` unique nullable · `(org_id, phone)` · `(current_branch_id, status)` · GIN full-text trên `(full_name)` · `(org_id, status)`
 
 ---
 
 ### `bookings`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId` | ObjectId | |
-| `bookingNo` | String | unique |
-| `customerId` | ObjectId | |
-| `bedId` | ObjectId \| null | `null` khi chưa xếp giường |
-| `roomId` | ObjectId \| null | |
-| `expectedCheckInDate`, `expectedDurationMonths` | | |
-| `quotedPrice` | VND | Snapshot giá đã báo |
-| `depositRequired`, `depositPaid` | VND | |
-| `holdUntil` | Date | **Bắt buộc** — hết hạn tự hủy |
-| `status` | Enum | `NEW` / `CONFIRMED` / `DEPOSIT_PAID` / `CHECKED_IN` / `CANCELLED` / `EXPIRED` / `NO_SHOW` |
-| `source` | String | |
-| `roommatePreferences` | String | |
-| `cancelReason`, `cancelledBy`, `cancelledAt` | | |
-| `contractId` | ObjectId | Hợp đồng sinh ra từ booking |
-| `notes` | String | |
+| `org_id`, `branch_id` | uuid | |
+| `booking_no` | text | unique |
+| `customer_id` | uuid | |
+| `bed_id` | uuid null | `null` khi chưa xếp giường |
+| `room_id` | uuid null | |
+| `expected_check_in_date`, `expected_duration_months` | | |
+| `quoted_price` | bigint | Snapshot giá đã báo |
+| `deposit_required`, `deposit_paid` | bigint | |
+| `hold_until` | timestamptz | **Bắt buộc** — hết hạn tự hủy |
+| `status` | text | `NEW` / `CONFIRMED` / `DEPOSIT_PAID` / `CHECKED_IN` / `CANCELLED` / `EXPIRED` / `NO_SHOW` |
+| `source` | text | |
+| `roommate_preferences` | text | |
+| `cancel_reason`, `cancelled_by`, `cancelled_at` | | |
+| `contract_id` | uuid | Hợp đồng sinh ra từ booking |
+| `notes` | text | |
 
-**Index:** `{branchId, status}` · `{bookingNo}` unique · `{customerId}` · `{bedId, status}` · `{holdUntil, status}` (cho job hết hạn)
+**Index:** `(branch_id, status)` · `(booking_no)` unique · `(customer_id)` · `(bed_id, status)` · `(hold_until, status)` (cho job hết hạn)
 
 ---
 
 ### `contracts`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId` | ObjectId | |
-| `contractNo` | String | unique toàn hệ thống |
-| `version` | Int | Số phụ lục |
-| `customerId` | ObjectId | |
-| `coTenants[]` | ObjectId[] | Người ở cùng (thuê nguyên phòng) |
-| `guardianInfo` | Object | Khách vị thành niên |
-| `wholeRoom` | Boolean | |
-| `bedIds[]` | ObjectId[] | Giường **dự kiến**. Thực tế lấy từ `bed_assignments` |
-| `startDate`, `endDate` | Date | |
-| `durationMonths` | Int | |
-| `autoRenewMonthly` | Boolean | |
-| `noticePeriodDays` | Int | Mặc định 30 |
-| `monthlyRent` | VND | **Snapshot** |
-| `depositAmount`, `depositMonths` | VND, Int | |
-| `billingCycle` | Enum | `MONTHLY` / `QUARTERLY` / `SEMESTER` / `YEARLY` |
-| `billingDayOfMonth`, `dueDayOfMonth` | Int | |
-| `electricityPrice`, `waterPrice` | VND | **Snapshot** |
-| `includedServices[]` | ObjectId[] | |
-| `discounts[]` | Object[] | `{type, value, reason, approvedBy, validFrom, validTo}` |
-| `templateId` | ObjectId | |
-| `termsSnapshot` | String | **Toàn văn điều khoản tại thời điểm ký** |
-| `specialTerms` | String | |
-| `houseRulesVersion` | String | |
-| `status` | Enum | `DRAFT` / `PENDING_APPROVAL` / `ACTIVE` / `EXPIRING` / `EXPIRED` / `TERMINATED` / `CANCELLED` |
-| `approvedBy`, `approvedAt` | | |
-| `terminatedAt`, `terminationReason`, `terminationType` | | `MUTUAL` / `BY_TENANT` / `BY_LANDLORD` / `ABANDONMENT` |
-| `bookingId`, `previousContractId`, `nextContractId` | ObjectId | |
-| `pdfUrl`, `signedPdfUrl`, `signatureMethod`, `signedAt` | | |
+| `org_id`, `branch_id` | uuid | |
+| `contract_no` | text | unique toàn hệ thống |
+| `version` | int | Số phụ lục |
+| `customer_id` | uuid | |
+| `co_tenant_ids` | uuid[] | Người ở cùng (thuê nguyên phòng) |
+| `guardian_info` | jsonb | Khách vị thành niên |
+| `whole_room` | boolean | |
+| `bed_ids` | uuid[] | Giường **dự kiến**. Thực tế lấy từ `bed_assignments` |
+| `start_date`, `end_date` | date | |
+| `duration_months` | int | |
+| `auto_renew_monthly` | boolean | |
+| `notice_period_days` | int | Mặc định 30 |
+| `monthly_rent` | bigint | **Snapshot** |
+| `deposit_amount`, `deposit_months` | bigint, int | |
+| `billing_cycle` | text | `MONTHLY` / `QUARTERLY` / `SEMESTER` / `YEARLY` |
+| `billing_day_of_month`, `due_day_of_month` | int | |
+| `electricity_price`, `water_price` | bigint | **Snapshot** |
+| `included_service_ids` | uuid[] | |
+| `discounts` | jsonb[] | `{type, value, reason, approvedBy, validFrom, validTo}` |
+| `template_id` | uuid | |
+| `terms_snapshot` | text | **Toàn văn điều khoản tại thời điểm ký** |
+| `special_terms` | text | |
+| `house_rules_version` | text | |
+| `status` | text | `DRAFT` / `PENDING_APPROVAL` / `ACTIVE` / `EXPIRING` / `EXPIRED` / `TERMINATED` / `CANCELLED` |
+| `approved_by`, `approved_at` | | |
+| `terminated_at`, `termination_reason`, `termination_type` | | `MUTUAL` / `BY_TENANT` / `BY_LANDLORD` / `ABANDONMENT` |
+| `booking_id`, `previous_contract_id`, `next_contract_id` | uuid | |
+| `signature_method`, `signed_at` | | Xem ghi chú dưới |
 
-**Index:** `{contractNo}` unique · `{branchId, status}` · `{customerId, status}` · `{branchId, endDate, status}` (cho job cảnh báo hết hạn) · `{previousContractId}`
+**Index:** `(contract_no)` unique · `(branch_id, status)` · `(customer_id, status)` · `(branch_id, end_date, status)` (cho job cảnh báo hết hạn) · `(previous_contract_id)`
+
+> **Không có `pdf_url`/`signed_pdf_url`.** Hợp đồng chỉ tồn tại dạng dữ liệu trong hệ thống (xem/duyệt qua UI); khi cần bản in để ký tay, in trực tiếp từ màn hình xem. Xem ghi chú ở [11-architecture.md §7.2](11-architecture.md) và [08-module-contracts.md](08-module-contracts.md).
 
 ---
 
-### `bed_assignments` ★ collection quan trọng nhất
-| Field | Type | Ghi chú |
+### `bed_assignments` ★ bảng quan trọng nhất
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId` | ObjectId | |
-| `contractId`, `customerId` | ObjectId | |
-| `bedId`, `roomId`, `floorId`, `buildingId` | ObjectId | Denormalized |
-| `startDate` | Date | Ngày bắt đầu ở thực tế |
-| `endDate` | Date \| null | `null` = đang ở |
-| `reason` | Enum | `CHECK_IN` / `TRANSFER_BED` / `TRANSFER_ROOM` / `TRANSFER_BUILDING` / `TRANSFER_BRANCH` / `RENEWAL` / `CHECK_OUT` |
-| `dailyRate` | VND | **Snapshot giá ngày** — không lookup ngược |
-| `monthlyRate` | VND | Snapshot |
-| `transferReason` | String | |
-| `previousAssignmentId` | ObjectId | Chuỗi lịch sử |
-| `createdBy`, `createdAt` | | |
+| `org_id`, `branch_id` | uuid | |
+| `contract_id`, `customer_id` | uuid | |
+| `bed_id`, `room_id`, `floor_id`, `building_id` | uuid | Denormalized |
+| `start_date` | date | Ngày bắt đầu ở thực tế |
+| `end_date` | date null | `null` = đang ở |
+| `reason` | text | `CHECK_IN` / `TRANSFER_BED` / `TRANSFER_ROOM` / `TRANSFER_BUILDING` / `TRANSFER_BRANCH` / `RENEWAL` / `CHECK_OUT` |
+| `daily_rate` | bigint | **Snapshot giá ngày** — không lookup ngược |
+| `monthly_rate` | bigint | Snapshot |
+| `transfer_reason` | text | |
+| `previous_assignment_id` | uuid | Chuỗi lịch sử |
+| `created_by`, `created_at` | | |
 
 **Index:**
-- `{bedId}` **unique partial** `{endDate: null}` — ★ chống bán trùng giường ở tầng DB
-- `{contractId, startDate}`
-- `{customerId, startDate: -1}`
-- `{bedId, startDate: -1}` — lịch sử người ở
-- `{branchId, startDate, endDate}` — tính lấp đầy
-- `{branchId, endDate}` — tìm assignment đang mở
+- `(bed_id)` **unique partial** `WHERE end_date IS NULL` — ★ chống bán trùng giường ở tầng database
+- `(contract_id, start_date)`
+- `(customer_id, start_date desc)`
+- `(bed_id, start_date desc)` — lịch sử người ở
+- `(branch_id, start_date, end_date)` — tính lấp đầy
+- `(branch_id, end_date)` — tìm assignment đang mở
 
 ---
 
 ### `checkin_checkout_records`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId`, `type` | | `CHECK_IN` / `CHECK_OUT` |
-| `contractId`, `customerId`, `bedId`, `roomId`, `assignmentId` | ObjectId | |
-| `performedAt`, `performedBy` | | |
-| `checklist[]` | Object[] | `{item, done, note}` |
-| `assetInventory[]` | Object[] | `{assetId, name, quantity, condition, note}` |
-| `photos[]` | String[] | **Bắt buộc** |
-| `keysHandedOver[]` | Object[] | `{type, code, quantity}` |
-| `utilityReadings` | Object | Chỉ số lúc vào/ra |
-| `damages[]` | Object[] | `{description, estimatedCost, photos[], chargedToTenant}` — chỉ ở check-out |
-| `tenantSignature`, `staffSignature` | String | Ảnh chữ ký hoặc xác nhận điện tử |
-| `documentUrl` | String | Biên bản PDF |
-| `notes` | String | |
+| `org_id`, `branch_id`, `type` | | `CHECK_IN` / `CHECK_OUT` |
+| `contract_id`, `customer_id`, `bed_id`, `room_id`, `assignment_id` | uuid | |
+| `performed_at`, `performed_by` | | |
+| `checklist` | jsonb[] | `{item, done, note}` |
+| `asset_inventory` | jsonb[] | `{assetId, name, quantity, condition, note}` |
+| `photos` | text[] | **Bắt buộc** — URL Cloudinary |
+| `keys_handed_over` | jsonb[] | `{type, code, quantity}` |
+| `utility_readings` | jsonb | Chỉ số lúc vào/ra |
+| `damages` | jsonb[] | `{description, estimatedCost, photos[], chargedToTenant}` — chỉ ở check-out |
+| `tenant_signature`, `staff_signature` | text | Ảnh chữ ký (Cloudinary) hoặc xác nhận điện tử |
+| `notes` | text | |
 
-**Index:** `{contractId, type}` · `{branchId, performedAt: -1}` · `{customerId}`
+**Index:** `(contract_id, type)` · `(branch_id, performed_at desc)` · `(customer_id)`
+
+> **Không có `document_url` (biên bản PDF).** Biên bản kiểm kê xem trực tiếp trong hệ thống (checklist + ảnh 2 chiều); in khi cần từ màn hình xem.
 
 ---
 
 ## Nhóm 3 — Tài chính
 
 ### `billing_periods`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId` | ObjectId | |
-| `code` | String | `"2026-09"` |
-| `periodFrom`, `periodTo` | Date | |
-| `issueDate`, `dueDate` | Date | |
-| `status` | Enum | `OPEN` / `READY` / `GENERATED` / `ISSUED` / `CLOSED` |
-| `invoiceCount`, `totalAmount` | Int, VND | |
-| `generatedAt`, `generatedBy`, `issuedAt`, `issuedBy`, `closedAt` | | |
+| `org_id`, `branch_id` | uuid | |
+| `code` | text | `"2026-09"` |
+| `period_from`, `period_to` | date | |
+| `issue_date`, `due_date` | date | |
+| `status` | text | `OPEN` / `READY` / `GENERATED` / `ISSUED` / `CLOSED` |
+| `invoice_count`, `total_amount` | int, bigint | |
+| `generated_at`, `generated_by`, `issued_at`, `issued_by`, `closed_at` | | |
 
-**Index:** `{branchId, code}` unique · `{branchId, status}`
+**Index:** `(branch_id, code)` unique · `(branch_id, status)`
 
 ---
 
 ### `invoices`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId` | ObjectId | |
-| `invoiceNo` | String | unique toàn hệ thống |
-| `invoiceType` | Enum | `PERIODIC` / `CHECKOUT_SETTLEMENT` / `ONE_TIME` |
-| `contractId`, `customerId`, `billingPeriodId` | ObjectId | |
-| `periodFrom`, `periodTo` | Date | |
-| `issueDate`, `dueDate` | Date | |
-| `subtotal`, `discountTotal`, `penaltyTotal`, `adjustmentTotal`, `grandTotal` | VND | |
-| `paidAmount`, `balance` | VND | Cập nhật khi có thanh toán |
-| `status` | Enum | `DRAFT` / `ISSUED` / `PARTIALLY_PAID` / `PAID` / `OVERDUE` / `VOID` |
-| `snapshot` | Object | `{customerName, customerPhone, idNumber, address, branchName, branchAddress, roomCode, bedCode, contractNo, monthlyRent}` — **đóng băng để in lại đúng** |
-| `issuedBy`, `issuedAt` | | |
-| `voidedBy`, `voidedAt`, `voidReason` | | |
-| `pdfUrl` | String | |
-| `sentAt`, `sentChannels[]` | | |
-| `notes` | String | |
+| `org_id`, `branch_id` | uuid | |
+| `invoice_no` | text | unique toàn hệ thống |
+| `invoice_type` | text | `PERIODIC` / `CHECKOUT_SETTLEMENT` / `ONE_TIME` |
+| `contract_id`, `customer_id`, `billing_period_id` | uuid | |
+| `period_from`, `period_to` | date | |
+| `issue_date`, `due_date` | date | |
+| `subtotal`, `discount_total`, `penalty_total`, `adjustment_total`, `grand_total` | bigint | |
+| `paid_amount`, `balance` | bigint | Cập nhật khi có thanh toán |
+| `status` | text | `DRAFT` / `ISSUED` / `PARTIALLY_PAID` / `PAID` / `OVERDUE` / `VOID` |
+| `snapshot` | jsonb | `{customerName, customerPhone, idNumber, address, branchName, branchAddress, roomCode, bedCode, contractNo, monthlyRent}` — **đóng băng để xem lại đúng nội dung cũ** |
+| `issued_by`, `issued_at` | | |
+| `voided_by`, `voided_at`, `void_reason` | | |
+| `sent_at`, `sent_channels` | timestamptz, text[] | |
+| `notes` | text | |
 
-**Index:** `{invoiceNo}` unique · `{contractId, billingPeriodId}` **unique** (chống sinh trùng) · `{branchId, status, dueDate}` (aging) · `{customerId, status}` · `{branchId, issueDate}` · `{branchId, billingPeriodId, status}`
+**Index:** `(invoice_no)` unique · `(contract_id, billing_period_id)` **unique** (chống sinh trùng) · `(branch_id, status, due_date)` (aging) · `(customer_id, status)` · `(branch_id, issue_date)` · `(branch_id, billing_period_id, status)`
+
+> **Không có `pdf_url`.** Hóa đơn xem trực tiếp trong hệ thống (web admin hoặc portal khách); khi cần bản in, in từ màn hình xem thay vì hệ thống tạo/lưu PDF.
 
 ---
 
 ### `invoice_lines`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId`, `invoiceId` | ObjectId | |
-| `lineType` | Enum | `RENT` / `ELECTRICITY` / `WATER` / `SERVICE_RECURRING` / `SERVICE_USAGE` / `PENALTY` / `LATE_FEE` / `DAMAGE` / `ONE_TIME` / `DISCOUNT` / `ADJUSTMENT` |
-| `description` | String | Câu lễ tân đọc cho khách |
-| `calculationNote` | String | **"Chỉ số 4521 → 4587 = 66 kWh × 3.500đ"** — trường quan trọng hay bị quên |
-| `quantity`, `unit`, `unitPrice` | | |
-| `amount` | VND | Âm với `DISCOUNT` |
-| `periodFrom`, `periodTo` | Date | Cho dòng prorate |
-| `sourceType`, `sourceId` | | Trỏ về bản ghi nguồn (`utility_readings`, `violations`, `service_usages`...) |
-| `sortOrder` | Int | |
+| `org_id`, `branch_id`, `invoice_id` | uuid | |
+| `line_type` | text | `RENT` / `ELECTRICITY` / `WATER` / `SERVICE_RECURRING` / `SERVICE_USAGE` / `PENALTY` / `LATE_FEE` / `DAMAGE` / `ONE_TIME` / `DISCOUNT` / `ADJUSTMENT` |
+| `description` | text | Câu lễ tân đọc cho khách |
+| `calculation_note` | text | **"Chỉ số 4521 → 4587 = 66 kWh × 3.500đ"** — trường quan trọng hay bị quên |
+| `quantity`, `unit`, `unit_price` | | |
+| `amount` | bigint | Âm với `DISCOUNT` |
+| `period_from`, `period_to` | date | Cho dòng prorate |
+| `source_type`, `source_id` | | Trỏ về bản ghi nguồn (`utility_readings`, `violations`, `service_usages`...) |
+| `sort_order` | int | |
 
-**Index:** `{invoiceId, sortOrder}` · `{branchId, lineType, periodFrom}` (báo cáo doanh thu theo nguồn) · `{sourceType, sourceId}`
+**Index:** `(invoice_id, sort_order)` · `(branch_id, line_type, period_from)` (báo cáo doanh thu theo nguồn) · `(source_type, source_id)`
 
 ---
 
 ### `invoice_adjustments`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId`, `invoiceId` | ObjectId | |
-| `adjustmentNo` | String | unique |
-| `amount` | VND | Dương hoặc âm |
-| `reason` | String | **Bắt buộc** |
-| `evidenceUrls[]` | String[] | |
-| `requestedBy`, `requestedAt` | | |
-| `approvedBy`, `approvedAt` | | **Phải khác `requestedBy`** |
-| `status` | Enum | `PENDING` / `APPROVED` / `REJECTED` |
-| `rejectReason` | String | |
+| `org_id`, `branch_id`, `invoice_id` | uuid | |
+| `adjustment_no` | text | unique |
+| `amount` | bigint | Dương hoặc âm |
+| `reason` | text | **Bắt buộc** |
+| `evidence_urls` | text[] | URL Cloudinary |
+| `requested_by`, `requested_at` | | |
+| `approved_by`, `approved_at` | | **Phải khác `requested_by`** |
+| `status` | text | `PENDING` / `APPROVED` / `REJECTED` |
+| `reject_reason` | text | |
 
-**Index:** `{invoiceId}` · `{branchId, status}` · `{adjustmentNo}` unique
+**Index:** `(invoice_id)` · `(branch_id, status)` · `(adjustment_no)` unique
 
 ---
 
 ### `payments`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId` | ObjectId | |
-| `paymentNo` | String | unique |
-| `customerId` | ObjectId | |
-| `payerName`, `payerAccount` | String | Người trả thực tế (phụ huynh) |
-| `amount` | VND | |
-| `method` | Enum | `CASH` / `BANK_TRANSFER` / `VIETQR` / `EWALLET` / `GATEWAY` / `DEPOSIT_OFFSET` / `CREDIT_OFFSET` |
-| `externalTxnId` | String | Mã GD ngân hàng/cổng |
-| `idempotencyKey` | String | **unique sparse — chống ghi trùng** |
-| `bankRef`, `bankStatementId` | String | |
-| `receivedAt`, `receivedBy` | | |
-| `cashSessionId` | ObjectId | Bắt buộc khi `method = CASH` |
-| `allocatedAmount`, `unallocatedAmount` | VND | |
-| `reconciledAt`, `reconciledBy` | | |
-| `status` | Enum | `PENDING` / `CONFIRMED` / `FAILED` / `REVERSED` |
-| `reversedBy`, `reversedAt`, `reverseReason`, `reversalOfPaymentId` | | |
-| `receiptUrl` | String | Phiếu thu PDF |
-| `note` | String | |
+| `org_id`, `branch_id` | uuid | |
+| `payment_no` | text | unique |
+| `customer_id` | uuid | |
+| `payer_name`, `payer_account` | text | Người trả thực tế (phụ huynh) |
+| `amount` | bigint | |
+| `method` | text | `CASH` / `BANK_TRANSFER` / `VIETQR` / `EWALLET` / `GATEWAY` / `DEPOSIT_OFFSET` / `CREDIT_OFFSET` |
+| `external_txn_id` | text | Mã GD ngân hàng/cổng (VietQR/Casso/SePay) |
+| `idempotency_key` | text | **unique nullable — chống ghi trùng** |
+| `bank_ref`, `bank_statement_id` | text | |
+| `received_at`, `received_by` | | |
+| `cash_session_id` | uuid | Bắt buộc khi `method = CASH` |
+| `allocated_amount`, `unallocated_amount` | bigint | |
+| `reconciled_at`, `reconciled_by` | | |
+| `status` | text | `PENDING` / `CONFIRMED` / `FAILED` / `REVERSED` |
+| `reversed_by`, `reversed_at`, `reverse_reason`, `reversal_of_payment_id` | | |
+| `note` | text | |
 
-**Index:** `{idempotencyKey}` **unique sparse** · `{externalTxnId}` **unique sparse** · `{paymentNo}` unique · `{branchId, receivedAt: -1}` · `{customerId, receivedAt: -1}` · `{cashSessionId}` · `{branchId, status, reconciledAt}`
+**Index:** `(idempotency_key)` **unique nullable** · `(external_txn_id)` **unique nullable** · `(payment_no)` unique · `(branch_id, received_at desc)` · `(customer_id, received_at desc)` · `(cash_session_id)` · `(branch_id, status, reconciled_at)`
+
+> **Không có `receipt_url`.** Phiếu thu xem/tải trực tiếp từ màn hình danh sách thanh toán.
 
 ---
 
 ### `payment_allocations`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `paymentId`, `invoiceId` |
-| `amount` — VND |
-| `allocatedBy`, `allocatedAt` |
-| `isAutomatic` — Boolean (FIFO tự động hay người chỉ định) |
-| `reversedAt`, `reversedBy` |
+| `org_id`, `branch_id`, `payment_id`, `invoice_id` |
+| `amount` — bigint |
+| `allocated_by`, `allocated_at` |
+| `is_automatic` — boolean (FIFO tự động hay người chỉ định) |
+| `reversed_at`, `reversed_by` |
 
-**Index:** `{paymentId}` · `{invoiceId}` · `{branchId, allocatedAt}`
+**Index:** `(payment_id)` · `(invoice_id)` · `(branch_id, allocated_at)`
 
 ---
 
 ### `deposit_ledger`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId`, `contractId`, `customerId` | ObjectId | |
-| `entryNo` | String | unique |
-| `entryType` | Enum | `HOLD` / `TOP_UP` / `DEDUCT_DEBT` / `DEDUCT_DAMAGE` / `DEDUCT_PENALTY` / `REFUND` / `FORFEIT` / `TRANSFER_IN` / `TRANSFER_OUT` |
-| `amount` | VND | Dương với thu vào, âm với chi ra |
-| `balanceAfter` | VND | Số dư sau bút toán — để đối chiếu |
-| `reason` | String | Bắt buộc với `DEDUCT_*`, `FORFEIT` |
-| `relatedInvoiceId`, `relatedPaymentId`, `relatedTicketId` | ObjectId | |
-| `requestedBy`, `approvedBy`, `approvedAt`, `executedBy`, `executedAt` | | |
-| `status` | Enum | `PENDING` / `APPROVED` / `EXECUTED` / `REJECTED` |
-| `refundMethod`, `refundDueDate` | | |
-| `evidenceUrls[]` | String[] | |
+| `org_id`, `branch_id`, `contract_id`, `customer_id` | uuid | |
+| `entry_no` | text | unique |
+| `entry_type` | text | `HOLD` / `TOP_UP` / `DEDUCT_DEBT` / `DEDUCT_DAMAGE` / `DEDUCT_PENALTY` / `REFUND` / `FORFEIT` / `TRANSFER_IN` / `TRANSFER_OUT` |
+| `amount` | bigint | Dương với thu vào, âm với chi ra |
+| `balance_after` | bigint | Số dư sau bút toán — để đối chiếu |
+| `reason` | text | Bắt buộc với `DEDUCT_*`, `FORFEIT` |
+| `related_invoice_id`, `related_payment_id`, `related_ticket_id` | uuid | |
+| `requested_by`, `approved_by`, `approved_at`, `executed_by`, `executed_at` | | |
+| `status` | text | `PENDING` / `APPROVED` / `EXECUTED` / `REJECTED` |
+| `refund_method`, `refund_due_date` | | |
+| `evidence_urls` | text[] | URL Cloudinary |
 
-**Index:** `{contractId, createdAt}` · `{customerId}` · `{branchId, status}` · `{branchId, refundDueDate, status}` (danh sách cọc đến hạn hoàn) · `{entryNo}` unique
+**Index:** `(contract_id, created_at)` · `(customer_id)` · `(branch_id, status)` · `(branch_id, refund_due_date, status)` (danh sách cọc đến hạn hoàn) · `(entry_no)` unique
 
 ---
 
 ### `cash_sessions`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `sessionNo`, `staffId`, `shiftId` |
-| `openedAt`, `openingBalance` — VND |
-| `closedAt`, `systemTotal`, `countedTotal`, `variance` — VND |
-| `varianceReason` |
-| `handoverNote` — **ghi chú bàn giao ca** |
+| `org_id`, `branch_id`, `session_no`, `staff_id`, `shift_id` |
+| `opened_at`, `opening_balance` — bigint |
+| `closed_at`, `system_total`, `counted_total`, `variance` — bigint |
+| `variance_reason` |
+| `handover_note` — **ghi chú bàn giao ca** |
 | `status` — `OPEN` / `PENDING_REVIEW` / `DISPUTED` / `CLOSED` |
-| `reviewedBy`, `reviewedAt` |
-| `depositedToBank` (Boolean), `bankDepositRef`, `depositedAt` |
+| `reviewed_by`, `reviewed_at` |
+| `deposited_to_bank` (boolean), `bank_deposit_ref`, `deposited_at` |
 
-**Index:** `{branchId, status}` · `{staffId, openedAt: -1}` · `{sessionNo}` unique · `{branchId, openedAt: -1}`
+**Index:** `(branch_id, status)` · `(staff_id, opened_at desc)` · `(session_no)` unique · `(branch_id, opened_at desc)`
 
 ---
 
 ### `expenses`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `buildingId` |
-| `expenseNo` — unique |
+| `org_id`, `branch_id`, `building_id` |
+| `expense_no` — unique |
 | `category` — `RENT` / `SALARY` / `UTILITIES` / `MAINTENANCE` / `CLEANING` / `EQUIPMENT` / `MARKETING` / `ADMIN` / `TAX` / `OTHER` |
-| `amount` — VND |
-| `expenseDate`, `paidAt` |
-| `vendor`, `vendorInvoiceRef` |
-| `paymentMethod` |
+| `amount` — bigint |
+| `expense_date`, `paid_at` |
+| `vendor`, `vendor_invoice_ref` |
+| `payment_method` |
 | `description` |
-| `attachments[]` — ảnh hóa đơn |
-| `isRecurring`, `recurringConfig` |
-| `relatedTicketId`, `relatedAssetId` |
-| `allocationRule` — khi là chi phí chung |
+| `attachments` — text[] (ảnh hóa đơn qua Cloudinary) |
+| `is_recurring`, `recurring_config` |
+| `related_ticket_id`, `related_asset_id` |
+| `allocation_rule` — khi là chi phí chung |
 | `status` — `DRAFT` / `PENDING_APPROVAL` / `APPROVED` / `PAID` / `REJECTED` |
-| `createdBy`, `approvedBy`, `approvedAt` |
+| `created_by`, `approved_by`, `approved_at` |
 
-**Index:** `{branchId, expenseDate: -1}` · `{branchId, category, expenseDate}` · `{expenseNo}` unique · `{status}`
+**Index:** `(branch_id, expense_date desc)` · `(branch_id, category, expense_date)` · `(expense_no)` unique · `(status)`
 
 ---
 
 ### `idempotency_keys`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
 | `key` — unique |
-| `scope`, `requestHash`, `responseBody`, `statusCode` |
-| `createdAt` — TTL 7 ngày |
+| `scope`, `request_hash`, `response_body`, `status_code` |
+| `created_at` — dọn bằng job định kỳ sau 7 ngày (Postgres không có TTL index sẵn) |
 
-**Index:** `{key}` unique · `{createdAt}` TTL 604800
+**Index:** `(key)` unique · `(created_at)`
 
 ---
 
 ## Nhóm 4 — Điện nước & Dịch vụ
 
 ### `utility_meters`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId`, `buildingId` | ObjectId | |
-| `code`, `serialNumber` | String | |
-| `type` | Enum | `ELECTRIC` / `WATER` |
-| `scope` | Enum | `ROOM` / `SHARED_GROUP` / `BUILDING_MAIN` |
-| `roomIds[]` | ObjectId[] | Các phòng dùng đồng hồ này |
-| `sharingRule` | Object | `{method: 'PER_PERSON'\|'PER_ROOM'\|'FIXED_RATIO', ratios}` |
-| `multiplier` | Number | Hệ số nhân |
-| `maxReading` | Int | Số vòng tối đa (vd 99999) |
-| `installedAt`, `replacedAt`, `replacedByMeterId` | | |
-| `status` | Enum | `ACTIVE` / `REPLACED` / `FAULTY` |
+| `org_id`, `branch_id`, `building_id` | uuid | |
+| `code`, `serial_number` | text | |
+| `type` | text | `ELECTRIC` / `WATER` |
+| `scope` | text | `ROOM` / `SHARED_GROUP` / `BUILDING_MAIN` |
+| `room_ids` | uuid[] | Các phòng dùng đồng hồ này |
+| `sharing_rule` | jsonb | `{method: 'PER_PERSON'|'PER_ROOM'|'FIXED_RATIO', ratios}` |
+| `multiplier` | numeric | Hệ số nhân |
+| `max_reading` | int | Số vòng tối đa (vd 99999) |
+| `installed_at`, `replaced_at`, `replaced_by_meter_id` | | |
+| `status` | text | `ACTIVE` / `REPLACED` / `FAULTY` |
 
-**Index:** `{branchId, code}` unique · `{roomIds}` · `{branchId, type, status}`
+**Index:** `(branch_id, code)` unique · GIN trên `(room_ids)` · `(branch_id, type, status)`
 
 ---
 
 ### `utility_readings`
-| Field | Type | Ghi chú |
+| Cột | Kiểu | Ghi chú |
 |---|---|---|
-| `orgId`, `branchId`, `meterId`, `roomId` | ObjectId | |
-| `billingPeriodId` | ObjectId | |
-| `previousReading`, `currentReading` | Number | |
-| `consumption` | Number | **Lưu lại** dù dẫn xuất được — công thức có thể đổi |
-| `isRollover`, `isMeterReplaced` | Boolean | |
-| `unitPrice` | VND | **Snapshot** |
-| `amount` | VND | |
-| `readingDate` | Date | |
-| `photoUrl` | String | **Bắt buộc — bằng chứng duy nhất khi tranh chấp** |
-| `recordedBy`, `recordedAt` | | |
-| `status` | Enum | `DRAFT` / `SUBMITTED` / `APPROVED` / `LOCKED` |
-| `approvedBy`, `approvedAt` | | |
-| `isAbnormal`, `abnormalNote` | | |
-| `isEstimated`, `estimationBasis` | | Khi đồng hồ hỏng |
-| `adjustedFromReadingId` | ObjectId | Khi là bản sửa |
+| `org_id`, `branch_id`, `meter_id`, `room_id` | uuid | |
+| `billing_period_id` | uuid | |
+| `previous_reading`, `current_reading` | numeric | |
+| `consumption` | numeric | **Lưu lại** dù dẫn xuất được — công thức có thể đổi |
+| `is_rollover`, `is_meter_replaced` | boolean | |
+| `unit_price` | bigint | **Snapshot** |
+| `amount` | bigint | |
+| `reading_date` | date | |
+| `photo_url` | text | **Bắt buộc — bằng chứng duy nhất khi tranh chấp**, URL Cloudinary |
+| `recorded_by`, `recorded_at` | | |
+| `status` | text | `DRAFT` / `SUBMITTED` / `APPROVED` / `LOCKED` |
+| `approved_by`, `approved_at` | | |
+| `is_abnormal`, `abnormal_note` | | |
+| `is_estimated`, `estimation_basis` | | Khi đồng hồ hỏng |
+| `adjusted_from_reading_id` | uuid | Khi là bản sửa |
 
-**Index:** `{meterId, billingPeriodId}` unique · `{branchId, billingPeriodId, status}` · `{roomId, readingDate: -1}` · `{branchId, isAbnormal}`
+**Index:** `(meter_id, billing_period_id)` unique · `(branch_id, billing_period_id, status)` · `(room_id, reading_date desc)` · `(branch_id, is_abnormal)`
 
 ---
 
 ### `services`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId` — **theo chi nhánh** |
+| `org_id`, `branch_id` — **theo chi nhánh** |
 | `code`, `name`, `category` |
-| `price` — VND, `unit` |
-| `billingType` — `RECURRING` / `PER_USE` / `ONE_TIME` |
+| `price` — bigint, `unit` |
+| `billing_type` — `RECURRING` / `PER_USE` / `ONE_TIME` |
 | `cycle` — `MONTHLY` / `QUARTERLY` |
-| `prorateOnStart`, `prorateOnCancel` — Boolean |
-| `isIncludedByDefault`, `requiresApproval` |
+| `prorate_on_start`, `prorate_on_cancel` — boolean |
+| `is_included_by_default`, `requires_approval` |
 | `status` |
 
-**Index:** `{branchId, code}` unique · `{branchId, status}`
+**Index:** `(branch_id, code)` unique · `(branch_id, status)`
 
 ---
 
 ### `service_subscriptions`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `contractId`, `customerId`, `serviceId` |
-| `startDate`, `endDate` |
-| `quantity`, `priceSnapshot` — VND |
-| `metadata` — vd biển số xe |
+| `org_id`, `branch_id`, `contract_id`, `customer_id`, `service_id` |
+| `start_date`, `end_date` |
+| `quantity`, `price_snapshot` — bigint |
+| `metadata` — jsonb, vd biển số xe |
 | `status` — `ACTIVE` / `PAUSED` / `CANCELLED` |
-| `cancelledAt`, `cancelReason` |
+| `cancelled_at`, `cancel_reason` |
 
-**Index:** `{contractId, status}` · `{branchId, serviceId, status}` · `{customerId}`
+**Index:** `(contract_id, status)` · `(branch_id, service_id, status)` · `(customer_id)`
 
 ---
 
 ### `service_usages`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `customerId`, `serviceId` |
-| `usedAt`, `quantity`, `unitPrice`, `amount` — VND |
-| `recordedBy` |
-| `billedInvoiceId` — đã tính vào hóa đơn nào |
+| `org_id`, `branch_id`, `customer_id`, `service_id` |
+| `used_at`, `quantity`, `unit_price`, `amount` — bigint |
+| `recorded_by` |
+| `billed_invoice_id` — đã tính vào hóa đơn nào |
 
-**Index:** `{customerId, usedAt}` · `{branchId, billedInvoiceId}` · `{branchId, usedAt}`
+**Index:** `(customer_id, used_at)` · `(branch_id, billed_invoice_id)` · `(branch_id, used_at)`
 
 ---
 
 ## Nhóm 5 — Vận hành
 
 ### `maintenance_tickets`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `buildingId`, `floorId`, `roomId`, `bedId`, `assetId` |
-| `ticketNo` — unique |
+| `org_id`, `branch_id`, `building_id`, `floor_id`, `room_id`, `bed_id`, `asset_id` |
+| `ticket_no` — unique |
 | `category`, `title`, `description` |
-| `attachments[]` |
+| `attachments` — text[] (Cloudinary) |
 | `priority` — `URGENT` / `HIGH` / `NORMAL` / `LOW` |
-| `slaResponseDeadline`, `slaResolveDeadline` |
-| `slaBreached`, `slaBreachedAt`, `pausedDurationMinutes` |
-| `reportedBy`, `reporterType` (`TENANT`/`STAFF`), `reportedAt` |
-| `assignedTo`, `assignedBy`, `assignedAt` |
-| `startedAt`, `resolvedAt`, `closedAt` |
-| `resolution`, `resolutionAttachments[]` |
-| `laborCost`, `partsCost`, `totalCost` — VND |
-| `chargeToTenant` (Boolean), `chargedInvoiceId`, `expenseId` |
-| `status`, `mergedIntoTicketId` |
-| `tenantRating`, `tenantFeedback` |
+| `sla_response_deadline`, `sla_resolve_deadline` |
+| `sla_breached`, `sla_breached_at`, `paused_duration_minutes` |
+| `reported_by`, `reporter_type` (`TENANT`/`STAFF`), `reported_at` |
+| `assigned_to`, `assigned_by`, `assigned_at` |
+| `started_at`, `resolved_at`, `closed_at` |
+| `resolution`, `resolution_attachments` — text[] |
+| `labor_cost`, `parts_cost`, `total_cost` — bigint |
+| `charge_to_tenant` (boolean), `charged_invoice_id`, `expense_id` |
+| `status`, `merged_into_ticket_id` |
+| `tenant_rating`, `tenant_feedback` |
 
-**Index:** `{branchId, status, priority}` · `{assignedTo, status}` · `{roomId, reportedAt: -1}` · `{assetId}` · `{ticketNo}` unique · `{branchId, slaResolveDeadline, status}` (job escalate)
+**Index:** `(branch_id, status, priority)` · `(assigned_to, status)` · `(room_id, reported_at desc)` · `(asset_id)` · `(ticket_no)` unique · `(branch_id, sla_resolve_deadline, status)` (job escalate)
 
 ---
 
 ### `ticket_events`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `ticketId`, `branchId`, `eventType`, `fromStatus`, `toStatus` |
-| `by`, `at`, `note`, `attachments[]` |
+| `ticket_id`, `branch_id`, `event_type`, `from_status`, `to_status` |
+| `by`, `at`, `note`, `attachments` — text[] |
 
-**Index:** `{ticketId, at}`
+**Index:** `(ticket_id, at)`
 
 ---
 
 ### `assets`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `buildingId`, `floorId`, `roomId`, `bedId` |
-| `assetCode` — unique, `qrCode` |
-| `name`, `category`, `brand`, `model`, `serialNumber` |
-| `locationType` — `ROOM` / `COMMON_AREA` / `STORAGE` |
-| `purchaseDate`, `purchasePrice` — VND, `supplier` |
-| `warrantyUntil` |
-| `depreciationMethod`, `usefulLifeMonths`, `currentBookValue` — VND |
+| `org_id`, `branch_id`, `building_id`, `floor_id`, `room_id`, `bed_id` |
+| `asset_code` — unique, `qr_code` |
+| `name`, `category`, `brand`, `model`, `serial_number` |
+| `location_type` — `ROOM` / `COMMON_AREA` / `STORAGE` |
+| `purchase_date`, `purchase_price` — bigint, `supplier` |
+| `warranty_until` |
+| `depreciation_method`, `useful_life_months`, `current_book_value` — bigint |
 | `condition` — `NEW` / `GOOD` / `FAIR` / `POOR` / `BROKEN` |
 | `status` — `IN_USE` / `IN_REPAIR` / `IN_STORAGE` / `DISPOSED` / `LOST` |
-| `repairCount`, `totalRepairCost` — VND |
-| `images[]`, `notes` |
+| `repair_count`, `total_repair_cost` — bigint |
+| `images` — text[], `notes` |
 
-**Index:** `{branchId, assetCode}` unique · `{roomId}` · `{branchId, category, status}` · `{branchId, warrantyUntil}` (cảnh báo hết bảo hành)
+**Index:** `(branch_id, asset_code)` unique · `(room_id)` · `(branch_id, category, status)` · `(branch_id, warranty_until)` (cảnh báo hết bảo hành)
 
 ---
 
 ### `asset_events`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `assetId`, `branchId`, `eventType`, `at`, `by` |
-| `fromLocation`, `toLocation`, `cost` — VND, `note`, `ticketId`, `attachments[]` |
+| `asset_id`, `branch_id`, `event_type`, `at`, `by` |
+| `from_location`, `to_location`, `cost` — bigint, `note`, `ticket_id`, `attachments` — text[] |
 
-**Index:** `{assetId, at: -1}`
+**Index:** `(asset_id, at desc)`
 
 ---
 
 ### `housekeeping_tasks`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `roomId`, `bedId` |
-| `taskType` — `CHECKOUT_CLEANING` / `ROUTINE` / `DEEP_CLEAN` / `INSPECTION` |
-| `assignedTo`, `dueAt` |
+| `org_id`, `branch_id`, `room_id`, `bed_id` |
+| `task_type` — `CHECKOUT_CLEANING` / `ROUTINE` / `DEEP_CLEAN` / `INSPECTION` |
+| `assigned_to`, `due_at` |
 | `status` — `PENDING` / `IN_PROGRESS` / `DONE` / `SKIPPED` |
-| `completedAt`, `completedBy`, `photos[]`, `issuesFound` |
+| `completed_at`, `completed_by`, `photos` — text[], `issues_found` |
 
-**Index:** `{branchId, status, dueAt}` · `{assignedTo, status}` · `{bedId}`
+**Index:** `(branch_id, status, due_at)` · `(assigned_to, status)` · `(bed_id)`
 
 ---
 
 ### `house_rules`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `version`, `effectiveFrom`, `effectiveTo` |
-| `sections[]` — `{title, content, order}` |
-| `penaltyRules[]` — `{ruleCode, name, severity, penalties: [{occurrence, type, amount}]}` |
-| `status`, `publishedAt`, `publishedBy` |
+| `org_id`, `branch_id`, `version`, `effective_from`, `effective_to` |
+| `sections` — jsonb[] `{title, content, order}` |
+| `penalty_rules` — jsonb[] `{ruleCode, name, severity, penalties: [{occurrence, type, amount}]}` |
+| `status`, `published_at`, `published_by` |
 
-**Index:** `{branchId, version}` unique · `{branchId, status}`
+**Index:** `(branch_id, version)` unique · `(branch_id, status)`
 
 ---
 
 ### `violations`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `customerId`, `roomId` |
-| `violationNo` — unique |
-| `ruleCode`, `ruleVersion` |
-| `occurredAt`, `reportedBy`, `description` |
-| `evidence[]` — **bắt buộc với phạt tiền** |
-| `severity`, `occurrenceCount` |
-| `penaltyType` — `WARNING` / `FINE` / `COMPENSATION` / `SUSPENSION` / `TERMINATION` |
-| `penaltyAmount` — VND |
+| `org_id`, `branch_id`, `customer_id`, `room_id` |
+| `violation_no` — unique |
+| `rule_code`, `rule_version` |
+| `occurred_at`, `reported_by`, `description` |
+| `evidence` — text[] **bắt buộc với phạt tiền**, URL Cloudinary |
+| `severity`, `occurrence_count` |
+| `penalty_type` — `WARNING` / `FINE` / `COMPENSATION` / `SUSPENSION` / `TERMINATION` |
+| `penalty_amount` — bigint |
 | `status` — `DRAFT` / `PENDING_APPROVAL` / `APPROVED` / `APPEALED` / `WAIVED` / `CHARGED` |
-| `approvedBy`, `approvedAt` |
-| `chargedInvoiceId` |
-| `tenantAcknowledgedAt`, `appealReason`, `appealResolution` |
+| `approved_by`, `approved_at` |
+| `charged_invoice_id` |
+| `tenant_acknowledged_at`, `appeal_reason`, `appeal_resolution` |
 
-**Index:** `{customerId, occurredAt: -1}` · `{branchId, status}` · `{violationNo}` unique · `{branchId, status, chargedInvoiceId}` (job tính phí)
+**Index:** `(customer_id, occurred_at desc)` · `(branch_id, status)` · `(violation_no)` unique · `(branch_id, status, charged_invoice_id)` (job tính phí)
 
 ---
 
 ### `visitor_logs`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `visitorType` |
-| `visitorName`, `visitorPhone`, `visitorIdNumber` |
-| `hostCustomerId`, `roomId`, `purpose` |
-| `checkInAt`, `checkOutAt`, `recordedBy` |
-| `approvedByHost` (Boolean), `approvedAt` |
-| `vehiclePlate`, `overnightStay` (Boolean), `notes` |
+| `org_id`, `branch_id`, `visitor_type` |
+| `visitor_name`, `visitor_phone`, `visitor_id_number` |
+| `host_customer_id`, `room_id`, `purpose` |
+| `check_in_at`, `check_out_at`, `recorded_by` |
+| `approved_by_host` (boolean), `approved_at` |
+| `vehicle_plate`, `overnight_stay` (boolean), `notes` |
 
-**Index:** `{branchId, checkInAt: -1}` · `{hostCustomerId}` · `{branchId, checkOutAt}` (tìm người chưa ra)
+**Index:** `(branch_id, check_in_at desc)` · `(host_customer_id)` · `(branch_id, check_out_at)` (tìm người chưa ra)
 
 ---
 
 ### `staff_shifts`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `staffId`, `date` |
-| `shiftType`, `startTime`, `endTime` |
+| `org_id`, `branch_id`, `staff_id`, `date` |
+| `shift_type`, `start_time`, `end_time` |
 | `status` — `SCHEDULED` / `CHECKED_IN` / `COMPLETED` / `ABSENT` |
-| `actualStartAt`, `actualEndAt`, `note` |
+| `actual_start_at`, `actual_end_at`, `note` |
 
-**Index:** `{branchId, date}` · `{staffId, date}` unique
+**Index:** `(branch_id, date)` · `(staff_id, date)` unique
 
 ---
 
 ## Nhóm 6 — Hệ thống
 
 ### `notifications`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `recipientType` (`USER`/`CUSTOMER`), `recipientId` |
-| `templateCode`, `title`, `body`, `data` (Object) |
-| `channels[]` — `IN_APP` / `EMAIL` / `ZALO` / `SMS` |
-| `channelStatus` — `{zalo: {status, sentAt, error}, ...}` |
-| `priority`, `relatedEntity`, `relatedEntityId` |
+| `org_id`, `branch_id`, `recipient_type` (`USER`/`CUSTOMER`), `recipient_id` |
+| `template_code`, `title`, `body`, `data` (jsonb) |
+| `channels` — text[] `IN_APP` / `EMAIL` / `ZALO` / `SMS` |
+| `channel_status` — jsonb `{zalo: {status, sentAt, error}, ...}` |
+| `priority`, `related_entity`, `related_entity_id` |
 | `status` — `PENDING` / `SENT` / `PARTIALLY_SENT` / `FAILED` |
-| `readAt`, `scheduledAt`, `sentAt`, `retryCount` |
+| `read_at`, `scheduled_at`, `sent_at`, `retry_count` |
 
-**Index:** `{recipientId, readAt, createdAt: -1}` · `{status, scheduledAt}` (job gửi) · `{branchId, createdAt: -1}`
+**Index:** `(recipient_id, read_at, created_at desc)` · `(status, scheduled_at)` (job gửi) · `(branch_id, created_at desc)`
 
 ---
 
 ### `notification_templates`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `code` — unique, `name` |
-| `channels[]`, `subject`, `bodyTemplate`, `zaloTemplateId` |
-| `variables[]`, `version`, `status` |
+| `org_id`, `code` — unique, `name` |
+| `channels` — text[], `subject`, `body_template`, `zalo_template_id` |
+| `variables` — text[], `version`, `status` |
 
-**Index:** `{orgId, code}` unique
+**Index:** `(org_id, code)` unique
 
 ---
 
 ### `audit_logs` (append-only)
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId` |
-| `actorId`, `actorName`, `actorRole` — **snapshot** |
-| `action`, `entity`, `entityId` |
-| `before`, `after`, `diff[]` |
+| `org_id`, `branch_id` |
+| `actor_id`, `actor_name`, `actor_role` — **snapshot** |
+| `action`, `entity`, `entity_id` |
+| `before`, `after` — jsonb, `diff` — jsonb[] |
 | `reason` — bắt buộc với nhóm nhạy cảm |
-| `ip`, `userAgent`, `requestId` |
+| `ip`, `user_agent`, `request_id` |
 | `at` |
 
-**Index:** `{entity, entityId, at: -1}` · `{branchId, at: -1}` · `{actorId, at: -1}` · `{action, at: -1}`
-TTL 3 năm cho action không thuộc nhóm tài chính; nhóm tài chính giữ vĩnh viễn (tách collection `audit_logs_financial` hoặc dùng cờ `retainForever`).
+**Index:** `(entity, entity_id, at desc)` · `(branch_id, at desc)` · `(actor_id, at desc)` · `(action, at desc)`
+Không có API `UPDATE`/`DELETE` (revoke ở tầng permission + không có route). Nhóm tài chính giữ vĩnh viễn; nhóm còn lại dọn sau 3 năm bằng job định kỳ (Postgres không có TTL index sẵn như MongoDB).
 
 ---
 
 ### `attachments`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `ownerType`, `ownerId` |
-| `fileName`, `mimeType`, `sizeBytes`, `storageKey` |
-| `isSensitive` — ảnh CCCD |
-| `uploadedBy`, `uploadedAt`, `deletedAt` |
+| `org_id`, `branch_id`, `owner_type`, `owner_id` |
+| `file_name`, `mime_type`, `size_bytes`, `cloudinary_public_id` |
+| `is_sensitive` — ảnh CCCD |
+| `uploaded_by`, `uploaded_at`, `deleted_at` |
 
-**Index:** `{ownerType, ownerId}` · `{branchId, uploadedAt: -1}`
+**Index:** `(owner_type, owner_id)` · `(branch_id, uploaded_at desc)`
+
+> Bảng này chỉ theo dõi **ảnh** (Cloudinary `public_id` + metadata) — hệ thống không lưu file PDF.
 
 ---
 
 ### `counters`
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
 | `key` — vd `"invoice:TD:2026"` |
-| `seq` — Int |
+| `seq` — bigint |
 
-**Index:** `{key}` unique
-Dùng `findOneAndUpdate` với `$inc` để sinh số an toàn khi đồng thời.
+**Index:** `(key)` unique
+Sinh số an toàn khi đồng thời bằng `INSERT ... ON CONFLICT (key) DO UPDATE SET seq = counters.seq + 1 RETURNING seq` (tương đương `findOneAndUpdate` + `$inc` của MongoDB).
 
 ---
 
 ### `report_snapshots` (Phase 2)
-| Field | Type |
+| Cột | Kiểu |
 |---|---|
-| `orgId`, `branchId`, `date`, `metricType` |
-| `values` — Object |
-| `computedAt` |
+| `org_id`, `branch_id`, `date`, `metric_type` |
+| `values` — jsonb |
+| `computed_at` |
 
-**Index:** `{branchId, metricType, date}` unique · `{orgId, metricType, date}`
+**Index:** `(branch_id, metric_type, date)` unique · `(org_id, metric_type, date)`
 
 ---
 
@@ -843,12 +860,16 @@ Dùng `findOneAndUpdate` với `$inc` để sinh số an toàn khi đồng thờ
 
 | Index | Vì sao then chốt |
 |---|---|
-| `bed_assignments {bedId}` unique partial `{endDate: null}` | **Chống bán trùng giường ở tầng database** |
-| `payments {idempotencyKey}` unique sparse | **Chống ghi nhận thanh toán trùng** |
-| `payments {externalTxnId}` unique sparse | Chống webhook trùng |
-| `invoices {contractId, billingPeriodId}` unique | Chống sinh hóa đơn trùng kỳ |
-| `customers {orgId, idNumber}` unique sparse | Chống hồ sơ trùng |
-| `invoices {branchId, status, dueDate}` | Aging công nợ |
-| `beds {branchId, status}` | Sơ đồ giường |
-| `contracts {branchId, endDate, status}` | Job cảnh báo hết hạn |
-| `bookings {holdUntil, status}` | Job hết hạn giữ chỗ |
+| `bed_assignments (bed_id)` unique partial `WHERE end_date IS NULL` | **Chống bán trùng giường ở tầng database** |
+| `payments (idempotency_key)` unique nullable | **Chống ghi nhận thanh toán trùng** |
+| `payments (external_txn_id)` unique nullable | Chống webhook trùng |
+| `invoices (contract_id, billing_period_id)` unique | Chống sinh hóa đơn trùng kỳ |
+| `customers (org_id, id_number)` unique nullable | Chống hồ sơ trùng |
+| `invoices (branch_id, status, due_date)` | Aging công nợ |
+| `beds (branch_id, status)` | Sơ đồ giường |
+| `contracts (branch_id, end_date, status)` | Job cảnh báo hết hạn |
+| `bookings (hold_until, status)` | Job hết hạn giữ chỗ |
+
+## Row-Level Security
+
+Mọi bảng nghiệp vụ ở trên (trừ các bảng cấu hình toàn cục nếu có) phải `ENABLE ROW LEVEL SECURITY` và có tối thiểu 1 policy lọc theo `org_id`/`branch_id` từ biến phiên request. Mẫu policy và cách set biến phiên: [11-architecture.md §2 D5](11-architecture.md).

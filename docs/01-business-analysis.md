@@ -238,7 +238,7 @@ Phần này là kinh nghiệm thực tế — những gì hệ thống tự làm
 | 4 | **Credit balance (khách trả thừa)** | Khách chuyển dư 200k. Tiền đó ở đâu trong hệ thống? Nếu không có chỗ, lễ tân sẽ ghi sổ tay. |
 | 5 | **Công cụ import từ Excel hiện tại** | Không import được dữ liệu đang có thì nhân viên sẽ quay lại Sheet. Đây là yếu tố **quyết định hệ thống có được dùng thật hay không**. |
 | 6 | **Bàn giao ca lễ tân** | Ghi chú chuyển ca: việc còn tồn, khách hẹn quay lại, chìa khóa đang giữ. |
-| 7 | **In ấn**: phiếu thu, hóa đơn, hợp đồng, biên bản kiểm kê | Khách VN vẫn cần giấy. Khổ giấy A5/A4 và máy in nhiệt. |
+| 7 | **In ấn**: phiếu thu, hóa đơn, hợp đồng, biên bản kiểm kê | Khách VN vẫn cần giấy. In trực tiếp từ màn hình xem trên trình duyệt (khổ giấy A5/A4 và máy in nhiệt) — hệ thống không tạo/lưu file PDF riêng. |
 | 8 | **Tìm kiếm toàn cục** | Lễ tân cần gõ SĐT ra ngay khách + phòng + nợ. Không có thì họ sẽ dùng Ctrl+F trên Excel. |
 | 9 | **Chế độ offline / mất mạng** | Ít nhất phải rollback sạch, không để lại dữ liệu dở dang. |
 | 10 | **Múi giờ và mốc chốt kỳ** | "Ngày 1" bắt đầu lúc nào? Lưu UTC, hiển thị Asia/Ho_Chi_Minh, mốc chốt kỳ theo giờ VN. |
@@ -326,7 +326,7 @@ Quy mô hiện tại không có vấn đề hiệu năng. Nhưng 3 chỗ sẽ ch
 ### 7.9 Vấn đề backup / khôi phục
 
 1. Backup database **hằng ngày**, giữ 30 ngày + bản cuối tháng giữ 12 tháng.
-2. Backup **object storage** (ảnh CCCD, hợp đồng PDF, ảnh hiện trạng) — hay bị quên nhất.
+2. Backup **lưu trữ ảnh** (Cloudinary — CCCD, ảnh kiểm kê hợp đồng, ảnh hiện trạng) — hay bị quên nhất.
 3. **Diễn tập restore mỗi quý.** Ghi lại thời gian restore thực tế.
 4. Xác định rõ **RPO/RTO**: mất tối đa bao nhiêu dữ liệu (đề xuất ≤ 24 giờ), khôi phục trong bao lâu (đề xuất ≤ 4 giờ).
 5. Audit log tài chính nên có bản sao **append-only** riêng, không xóa được kể cả khi DB chính bị xâm nhập.

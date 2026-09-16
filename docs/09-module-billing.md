@@ -374,7 +374,7 @@ Hóa đơn HD-TD-2026-000142, số tiền 2.850.000đ
 ```ts
 // Mọi payment phải có idempotencyKey
 {
-  idempotencyKey: string   // unique sparse index
+  idempotencyKey: string   // cột unique, cho phép null (Postgres: UNIQUE + nullable)
 }
 
 // Nguồn key theo từng luồng:
@@ -384,7 +384,7 @@ Hóa đơn HD-TD-2026-000142, số tiền 2.850.000đ
 //                      → bấm nút 2 lần chỉ tạo 1 payment
 ```
 
-Cộng thêm: unique sparse index trên `externalTxnId`.
+Cộng thêm: unique index (cho phép null) trên `externalTxnId` — xem [12-database-schema.md](12-database-schema.md).
 
 **Xử lý khi webhook đến lần 2:** trả về `200 OK` kèm payment đã tồn tại, **không** báo lỗi. Nếu báo lỗi, ngân hàng sẽ retry mãi.
 

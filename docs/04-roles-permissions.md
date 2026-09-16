@@ -27,15 +27,15 @@ Cả ba lớp phải được kiểm tra ở **backend**. Frontend ẩn nút ch�
 const PERMISSIONS = ['branch:view', 'branch:create', ... ] as const
 
 // roles — lưu DB, có thể tạo vai trò tùy chỉnh
-{ _id, orgId, code: 'BRANCH_MANAGER', name: 'Quản lý chi nhánh',
+{ id, orgId, code: 'BRANCH_MANAGER', name: 'Quản lý chi nhánh',
   permissions: ['branch:view', 'room:manage', ...],
   isSystem: true,          // vai trò hệ thống, không cho sửa/xóa
   limits: { refundApprovalMax: 5_000_000, discountMax: 500_000 } }
 
 // user_role_assignments — gán quyền, có phạm vi và thời hạn
-{ _id, userId, roleId, orgId,
+{ id, userId, roleId, orgId,
   scope: 'ALL' | 'BRANCH',
-  branchIds: [ObjectId],   // khi scope = BRANCH
+  branchIds: string[],     // uuid[], khi scope = BRANCH
   validFrom: Date, validUntil: Date | null,   // quyền tạm thời tự hết hạn
   grantedBy, grantedAt }
 ```
@@ -53,7 +53,7 @@ const PERMISSIONS = ['branch:view', 'branch:create', ... ] as const
 | **Giá** | `pricing:view` `pricing:update` `pricing:approve` |
 | **Khách thuê** | `customer:view` `customer:create` `customer:update` `customer:delete` `customer:export` `customer:view_id_doc` `customer:blacklist` |
 | **Đặt chỗ** | `booking:view/create/update/cancel` `booking:assign_bed` |
-| **Hợp đồng** | `contract:view/create/update/delete` `contract:approve` `contract:terminate` `contract:renew` `contract:export_pdf` `contract:template_manage` |
+| **Hợp đồng** | `contract:view/create/update/delete` `contract:approve` `contract:terminate` `contract:renew` `contract:print` `contract:template_manage` |
 | **Lưu trú** | `checkin:execute` `checkout:execute` `assignment:transfer` `assignment:transfer_branch` |
 | **Điện nước** | `utility:view` `utility:create_reading` `utility:update_reading` `utility:approve_reading` `utility:config_price` `utility:import` |
 | **Dịch vụ** | `service:view` `service:manage` `subscription:view/create/update/cancel` |
@@ -123,7 +123,7 @@ Chữ trong ngoặc là điều kiện. Ô có **đậm** là quyền then chố
 | 32 | Hợp đồng — duyệt | A | – | **A** | – | – | – | – | – | – |
 | 33 | Hợp đồng — chấm dứt sớm | U | – | **U + A** | Đề xuất | – | – | – | – | Yêu cầu |
 | 34 | Hợp đồng — gia hạn | U | – | U | **U** | – | – | – | – | Yêu cầu |
-| 35 | Hợp đồng — xuất PDF | E | E | E | **E** | E | – | – | – | E (của mình) |
+| 35 | Hợp đồng — in trực tiếp từ màn hình xem | E | E | E | **E** | E | – | – | – | E (của mình) |
 | 36 | Template hợp đồng | **M** | V | V | – | – | – | – | – | – |
 | | **LƯU TRÚ** |
 | 37 | Check-in | M | V | M | **M** | – | – | – | – | – |
@@ -289,7 +289,7 @@ Lưu trong `roles.limits` và `branches.approvalLimits`. **Không hard-code.**
 ### R7. Phạm vi chi nhánh áp dụng cả trên báo cáo
 Lỗi hay gặp: chặn scope ở API danh sách nhưng quên ở API tổng hợp/báo cáo/dashboard.
 
-**Quy tắc:** mọi truy vấn đều đi qua `scoped()`. Không có ngoại lệ. Có test tự động cho từng endpoint.
+**Quy tắc:** mọi truy vấn đều đi qua repository, biến phiên `app.*` được set trước khi query (kích hoạt RLS). Không có ngoại lệ. Có test tự động cho từng endpoint để bắt trường hợp quên set context.
 
 ### R8. Quyền có thời hạn
 `user_role_assignments` có `validUntil`. Dùng cho: nhân viên hỗ trợ chi nhánh khác tạm thời, thực tập sinh, kiểm toán viên bên ngoài.
@@ -341,7 +341,7 @@ Vai trò hệ thống (`isSystem: true`) không cho sửa/xóa để tránh tự
 
 ## 5. Test phân quyền — bắt buộc, không thương lượng
 
-Vì MongoDB không có RLS, **kỷ luật test là lớp bảo vệ duy nhất**.
+Postgres/Supabase có **Row-Level Security native** — database tự chặn sai phạm vi chi nhánh kể cả khi code tầng ứng dụng có bug (xem [11-architecture.md §2 D5](11-architecture.md)). RLS là lớp chặn đầu tiên và an toàn nhất, nhưng **không thay thế được test phân quyền**: RLS chỉ kiểm soát lớp SCOPE (dữ liệu chi nhánh nào), còn lớp PERMISSION (được làm hành động gì) và CONDITION (có vượt hạn mức không) vẫn hoàn toàn do code tầng ứng dụng quyết định — chỉ test tự động mới bắt được lỗi ở hai lớp này.
 
 Bộ test tối thiểu cho mỗi endpoint:
 

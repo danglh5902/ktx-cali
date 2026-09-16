@@ -21,17 +21,17 @@
 ### Làm gì
 | # | Hạng mục | Chi tiết |
 |---|---|---|
-| 1 | Khởi tạo dự án | Monorepo pnpm, Vite+React+TS, Fastify+Mongoose, MongoDB replica set, CI |
-| 2 | Xác thực | Đăng nhập, JWT + refresh, đổi mật khẩu, khóa tài khoản |
-| 3 | **RBAC + Scope guard** | Permission, role, assignment, `scopeFilter()`, ESLint rule, bộ test phân quyền |
+| 1 | Khởi tạo dự án | Monorepo pnpm, Vite+React+TS, Fastify+Drizzle/Prisma, Supabase project (Postgres + Auth), CI |
+| 2 | Xác thực | Supabase Auth: đăng nhập, refresh token, đổi mật khẩu, khóa tài khoản |
+| 3 | **RBAC + Row-Level Security** | Permission, role, assignment, RLS policy trên mọi bảng nghiệp vụ, bộ test phân quyền |
 | 4 | **Audit log** | Ghi tự động ở tầng service, màn hình xem |
-| 5 | **Module tiền** | `VND` bigint, làm tròn, chia có trọng số, đọc thành chữ, serialize JSON |
+| 5 | **Module tiền** | `VND` bigint (cột Postgres `bigint`), làm tròn, chia có trọng số, đọc thành chữ, serialize JSON |
 | 6 | Cấu trúc BĐS | Chi nhánh → tòa → tầng → loại phòng → phòng → giường; tạo hàng loạt |
 | 7 | **Công cụ import Excel** | 5 file mẫu + validate + báo cáo đối chiếu |
 | 8 | Khung giao diện | Sidebar theo vai trò, thanh trên, tìm kiếm toàn cục, mẫu danh sách/chi tiết/form |
 
 ### Vì sao làm trước
-- **Phân quyền và audit không thể thêm sau.** Bắt buộc mọi truy vấn đi qua `scopeFilter` từ dòng code đầu tiên, nếu không sẽ phải rà lại toàn bộ hệ thống.
+- **Phân quyền và audit không thể thêm sau.** Bắt buộc mọi bảng nghiệp vụ có RLS policy từ dòng code đầu tiên, nếu không sẽ phải rà lại toàn bộ hệ thống.
 - **Module tiền phải đúng từ đầu.** Nếu Phase 1 dùng `Number` rồi Phase 2 mới chuyển sang `bigint`, phải migrate dữ liệu tiền — rất rủi ro.
 - **Import quyết định hệ thống có được dùng thật hay không.** Đây là bài học đắt giá của nhiều dự án nội bộ: sản phẩm tốt nhưng nhân viên không chuyển sang vì phải nhập tay 500 bản ghi.
 
@@ -50,7 +50,7 @@
 |---|---|
 | 1 | **Hồ sơ khách thuê** đầy đủ + tìm kiếm không dấu + upload CCCD an toàn |
 | 2 | **Đặt chỗ & đặt cọc** + TTL giữ chỗ + chính sách hủy |
-| 3 | **Hợp đồng**: template, sinh PDF, duyệt, gia hạn, chấm dứt |
+| 3 | **Hợp đồng**: template, xem/duyệt trên hệ thống (in trực tiếp từ trình duyệt khi cần), gia hạn, chấm dứt |
 | 4 | **Check-in / Check-out** đầy đủ checklist, kiểm kê tài sản, ảnh 2 chiều |
 | 5 | **`bed_assignments`** + chuyển giường/phòng |
 | 6 | **Điện nước**: đồng hồ, nhập chỉ số (web + mobile), ảnh, validate, duyệt, khóa kỳ |
@@ -195,8 +195,7 @@ Phase 4:                               theo nhu cầu kinh doanh
 | **Yêu cầu thay đổi liên tục** | Cao | Trung bình | Bộ tài liệu này là điểm neo · thay đổi lớn phải cập nhật tài liệu trước |
 | Logic tính tiền sai | Trung bình | **Nghiêm trọng** | Test tự động cho mọi trường hợp prorate · chạy song song Excel đối chiếu |
 | Phân quyền rò rỉ giữa chi nhánh | Trung bình | **Nghiêm trọng** | Test phân quyền bắt buộc cho mọi endpoint · CI fail nếu thiếu test |
-| MongoDB không chạy replica set ở production | Trung bình | **Nghiêm trọng** | Ghi rõ trong tài liệu triển khai · health check kiểm tra khả năng transaction khi khởi động |
-| Mất dữ liệu | Thấp | **Nghiêm trọng** | Backup DB + object storage · diễn tập restore mỗi quý |
+| Mất dữ liệu | Thấp | **Nghiêm trọng** | Backup Supabase (DB) + backup Cloudinary (ảnh) · diễn tập restore mỗi quý |
 | Zalo ZNS duyệt template chậm | Trung bình | Thấp | Đăng ký sớm từ Phase 1 · email là phương án dự phòng |
 | Webhook ngân hàng không ổn định | Trung bình | Trung bình | Luôn giữ luồng đối soát thủ công song song |
 
@@ -204,10 +203,10 @@ Phase 4:                               theo nhu cầu kinh doanh
 
 ## Việc cần làm ngay trước khi code
 
-1. **Xác nhận backend stack** — tài liệu giả định Node + Fastify + Mongoose. Cần bạn xác nhận.
+1. **Xác nhận backend stack** — tài liệu giả định Node + Fastify + Supabase (Postgres)/Drizzle. Đã xác nhận với chủ dự án.
 2. **Chốt quy tắc prorate** — chia cho 30 cố định hay số ngày thực của tháng. Ảnh hưởng mọi hóa đơn. (Tài liệu khuyến nghị: chia 30, nhưng ở trọn tháng thì lấy đúng tiền tháng.)
 3. **Chốt chính sách cọc** — số tháng, thời hạn hoàn, tỷ lệ hoàn khi hủy theo từng mốc.
 4. **Chốt ngày chốt kỳ và hạn thanh toán** từng chi nhánh.
 5. **Thu thập file Excel hiện tại** của cả 3 chi nhánh để thiết kế công cụ import sát thực tế.
-6. **Chuẩn bị hạ tầng**: MongoDB replica set, object storage, tên miền.
+6. **Chuẩn bị hạ tầng**: Supabase project, tài khoản Cloudinary, tên miền.
 7. **Đăng ký Zalo OA + ZNS** (thủ tục mất vài tuần, làm sớm).

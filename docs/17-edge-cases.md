@@ -183,9 +183,9 @@
 **Xử lý:** Cờ `temporaryResidenceStatus` trên khách. Danh sách khách chưa khai báo, cảnh báo sau N ngày kể từ check-in. **Export danh sách theo biểu mẫu**: họ tên, ngày sinh, giới tính, CCCD, nơi thường trú, ngày đến, ngày đi dự kiến, phòng.
 **Triển khai:** Nghĩa vụ pháp lý bắt buộc, hệ thống tự làm thường bỏ quên hoàn toàn.
 
-### 38. Backup database nhưng thiếu file ảnh
-**Xử lý:** Backup **cả hai**: database và object storage (ảnh CCCD, hợp đồng PDF, ảnh hiện trạng, ảnh đồng hồ). Bật versioning + sao chép sang vùng khác.
-**Triển khai:** Mất ảnh CCCD và hợp đồng PDF là mất bằng chứng pháp lý. Đây là lỗ hổng backup phổ biến nhất.
+### 38. Backup database nhưng thiếu ảnh
+**Xử lý:** Backup **cả hai**: database (Supabase) và lưu trữ ảnh (Cloudinary — CCCD, ảnh kiểm kê hợp đồng, ảnh hiện trạng, ảnh đồng hồ). Bật versioning/backup theo gói dịch vụ tương ứng.
+**Triển khai:** Mất ảnh CCCD và ảnh kiểm kê là mất bằng chứng pháp lý. Đây là lỗ hổng backup phổ biến nhất.
 
 ### 39. Múi giờ và mốc chốt kỳ nửa đêm
 **Xử lý:** Lưu UTC, hiển thị `Asia/Ho_Chi_Minh`. `startDate`/`endDate` là **ngày thuần**, đặt tại 00:00 giờ VN. Job cron chạy theo giờ VN.

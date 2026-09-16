@@ -45,8 +45,8 @@ Hợp đồng là **văn bản pháp lý và là nguồn của mọi nghĩa vụ
 | **Liên kết** | `bookingId` | Booking nguồn |
 | | `previousContractId` | Hợp đồng trước (khi gia hạn) |
 | | `nextContractId` | Hợp đồng gia hạn |
-| **Tài liệu** | `pdfUrl` | Bản PDF đã sinh |
-| | `signedPdfUrl` | Bản đã ký (scan hoặc e-sign) |
+| **Tài liệu** | *(không có `pdfUrl`)* | Hệ thống không tạo/lưu file PDF — hợp đồng chỉ tồn tại dạng dữ liệu, xem/duyệt trực tiếp trong hệ thống. Khi cần bản in để ký tay, in trực tiếp từ màn hình xem. Xem [11-architecture.md §7.2](11-architecture.md) |
+| | `signedDocumentImage` | Ảnh (Cloudinary) bản đã ký tay/đóng dấu — chụp lại để lưu bằng chứng, không phải PDF sinh sẵn |
 | | `signatureMethod` | `PAPER` / `ELECTRONIC` |
 | | `signedAt` | |
 
@@ -57,8 +57,8 @@ Hợp đồng là **văn bản pháp lý và là nguồn của mọi nghĩa vụ
 | Thao tác | Ai | Ghi chú |
 |---|---|---|
 | Soạn hợp đồng | Lễ tân, Branch Manager | Từ booking hoặc tạo trực tiếp |
-| Sinh từ template | Hệ thống | Điền biến tự động |
-| Xuất PDF | Lễ tân trở lên | |
+| Sinh từ template | Hệ thống | Điền biến tự động, hiển thị trên màn hình xem |
+| In trực tiếp từ màn hình xem | Lễ tân trở lên | Không sinh/lưu file PDF — dùng chức năng in của trình duyệt khi cần bản giấy |
 | Gửi duyệt | Lễ tân | Khi có điều khoản đặc biệt hoặc giảm giá |
 | Duyệt | Branch Manager | |
 | Kích hoạt | Hệ thống | Tự động khi check-in |
@@ -126,11 +126,11 @@ sequenceDiagram
         HT->>HT: Ghi audit
     end
 
-    LT->>HT: Xuất PDF
-    HT-->>LT: File PDF
-    LT->>KH: In, đọc, ký (hoặc gửi e-sign)
+    LT->>HT: Mở màn hình xem hợp đồng
+    HT-->>LT: Hiển thị nội dung hợp đồng
+    LT->>KH: In từ trình duyệt, đọc, ký (hoặc gửi e-sign)
     KH-->>LT: Bản đã ký
-    LT->>HT: Upload bản ký
+    LT->>HT: Upload ảnh bản ký (Cloudinary)
     Note over HT: Hợp đồng ACTIVE khi check-in
 ```
 
@@ -204,7 +204,7 @@ Khách báo trả phòng
 
 **Khuyến nghị:** Phase 3, và bắt đầu từ **gia hạn hợp đồng** (khách đã quen hệ thống, giao dịch đơn giản) thay vì hợp đồng đầu tiên.
 
-Giai đoạn 1–2 dùng cách đơn giản hơn: sinh PDF → in → ký tay → scan/chụp → upload. Đủ dùng và không tốn chi phí.
+Giai đoạn 1–2 dùng cách đơn giản hơn: xem hợp đồng trên hệ thống → in từ trình duyệt → ký tay → chụp ảnh → upload (Cloudinary). Đủ dùng và không tốn chi phí.
 
 ---
 
@@ -230,7 +230,7 @@ Xem [04-roles-permissions.md](04-roles-permissions.md) dòng 30–36.
 | 6 | **Khách muốn đổi chu kỳ thanh toán giữa chừng** (tháng → quý) | Tạo phụ lục (`version` +1). Áp dụng từ kỳ kế tiếp, không hồi tố kỳ đang chạy |
 | 7 | **Hợp đồng ký nhưng khách không đến** | Hợp đồng chưa `ACTIVE` (chỉ `ACTIVE` khi check-in). Hủy hợp đồng, xử lý cọc theo chính sách no-show |
 | 8 | **Hợp đồng sai thông tin đã ký** | Sửa lỗi nhỏ (chính tả tên): sửa + ghi audit + in lại. Sai điều khoản/giá: phụ lục có chữ ký 2 bên |
-| 9 | **Mất bản hợp đồng giấy** | Bản PDF trong hệ thống là bản gốc điện tử. In lại được. Đây là một lý do quan trọng để số hóa |
+| 9 | **Mất bản hợp đồng giấy** | Dữ liệu hợp đồng trong hệ thống là bản gốc tham chiếu. Xem lại và in lại được bất cứ lúc nào từ màn hình xem. Đây là một lý do quan trọng để số hóa |
 | 10 | **Khách vị thành niên tròn 18 tuổi giữa hợp đồng** | Không cần làm gì với hợp đồng đang chạy. Hợp đồng gia hạn sau đó khách tự ký |
 | 11 | **Hợp đồng chồng lấn thời gian trên cùng một giường** | Ràng buộc ở `bed_assignments` (unique partial index) chặn. Hợp đồng thì có thể chồng lấn nếu khách đổi giường |
 | 12 | **Chấm dứt hợp đồng nhưng còn hóa đơn chưa thu** | Hợp đồng vẫn chấm dứt được, công nợ chuyển sang theo dõi ở hồ sơ khách. Không giữ hợp đồng "sống" chỉ để đòi nợ |
