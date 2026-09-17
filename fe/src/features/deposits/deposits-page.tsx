@@ -93,7 +93,7 @@ export function DepositsPage() {
     <div>
       <PageHeader
         title="Tiền cọc"
-        description="docs/09-module-billing.md §6 — sổ cọc dạng sổ cái; hoàn cọc phải qua đề nghị → duyệt → chi."
+        description="Theo dõi tiền cọc của từng khách. Muốn hoàn cọc phải gửi đề nghị, chờ duyệt rồi mới chi tiền — không chi trực tiếp."
         actions={
           <Button
             disabled={!selectedBranchId}

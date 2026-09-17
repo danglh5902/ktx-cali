@@ -92,7 +92,7 @@ export function CashSessionsPage() {
     <div>
       <PageHeader
         title="Ca quỹ tiền mặt"
-        description="docs/09-module-billing.md §7, D8 — mỗi ca một phiên, đóng ca phải đối chiếu tiền mặt thực tế."
+        description="Mỗi ca làm việc mở một phiên quỹ riêng. Khi đóng ca, phải đếm và đối chiếu tiền mặt thực tế với số hệ thống ghi nhận."
         actions={
           <Button
             disabled={!selectedBranchId}

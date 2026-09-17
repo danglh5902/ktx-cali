@@ -67,7 +67,7 @@ export function InvoicesPage() {
 
   return (
     <div>
-      <PageHeader title="Hóa đơn" description="docs/09-module-billing.md §2-3 — hóa đơn sinh từ kỳ chốt, phát hành trước khi thu tiền." />
+      <PageHeader title="Hóa đơn" description="Hóa đơn được sinh ra từ kỳ tính tiền. Hãy phát hành hóa đơn cho khách trước khi ghi nhận thanh toán." />
       {(error || formError) && <Alert>{formError ?? getErrorMessage(error)}</Alert>}
       {isLoading ? <LoadingState /> : <DataTable columns={columns} rows={invoices} rowKey={(i) => i.id} />}
     </div>

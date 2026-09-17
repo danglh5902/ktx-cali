@@ -59,7 +59,7 @@ export function PaymentsPage() {
     <div>
       <PageHeader
         title="Thanh toán"
-        description="docs/09-module-billing.md §4 — tự động phân bổ FIFO vào hóa đơn còn nợ."
+        description="Ghi nhận các khoản khách đã thanh toán. Hệ thống tự động trừ vào hóa đơn nợ lâu nhất trước."
         actions={
           <Button
             disabled={!selectedBranchId}

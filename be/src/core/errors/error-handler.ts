@@ -37,6 +37,15 @@ export function errorHandler(
     return;
   }
 
+  // Các lỗi built-in khác của Fastify (mã "FST_ERR_..."): body rỗng nhưng
+  // Content-Type: application/json, JSON sai định dạng, payload quá lớn...
+  // Đều là lỗi phía client (4xx), không phải sự cố hệ thống — trả đúng mã
+  // thay vì che thành 500 "Internal server error" gây khó chẩn đoán.
+  if (fastifyError.code?.startsWith("FST_ERR_") && fastifyError.statusCode && fastifyError.statusCode < 500) {
+    reply.code(fastifyError.statusCode).send({ error: fastifyError.message, code: fastifyError.code });
+    return;
+  }
+
   request.log.error({ err: error }, "Unhandled error");
   reply.code(500).send({ error: "Internal server error", code: "INTERNAL_ERROR" });
 }

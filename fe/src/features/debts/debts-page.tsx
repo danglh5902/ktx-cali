@@ -42,7 +42,7 @@ export function DebtsPage() {
     <div>
       <PageHeader
         title="Công nợ"
-        description="docs/09-module-billing.md §5.2 — tính trực tiếp từ hóa đơn còn nợ, nhóm theo tuổi nợ."
+        description="Danh sách các khoản khách còn nợ, tự động tính từ hóa đơn chưa thanh toán đủ và nhóm theo mức độ quá hạn."
       />
 
       {error && <Alert>{getErrorMessage(error)}</Alert>}

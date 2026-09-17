@@ -77,7 +77,7 @@ export function RoomTypesPage() {
     <div>
       <PageHeader
         title="Bảng giá (loại phòng)"
-        description="docs/06-module-property.md §4.3 — thay đổi giá được ghi audit."
+        description="Thiết lập bảng giá theo từng loại phòng. Mọi thay đổi giá đều được lưu lại lịch sử."
         actions={
           <Button
             disabled={!selectedBranchId}

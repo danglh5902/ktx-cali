@@ -78,7 +78,7 @@ export function BedsPage() {
     <div>
       <PageHeader
         title="Sơ đồ giường"
-        description="docs/06-module-property.md §5 · docs/15-ux-navigation.md §5"
+        description="Xem tình trạng từng giường theo thời gian thực: trống, đang ở, đang giữ chỗ, chờ dọn, đang sửa hoặc đã khóa."
         actions={
           <Button
             onClick={() => {

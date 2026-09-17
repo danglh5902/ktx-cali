@@ -101,7 +101,7 @@ export function RoomsPage() {
     <div>
       <PageHeader
         title="Phòng"
-        description="docs/06-module-property.md §4"
+        description="Quản lý danh sách phòng theo từng tòa và tầng, kèm giá ghi đè riêng nếu cần."
         actions={
           <Button disabled={!floorId} onClick={() => { setFormError(null); setDialogOpen(true); }}>
             <Plus size={16} /> Tạo phòng

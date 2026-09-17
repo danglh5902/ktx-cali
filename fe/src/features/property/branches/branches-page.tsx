@@ -108,7 +108,7 @@ export function BranchesPage() {
     <div>
       <PageHeader
         title="Chi nhánh"
-        description="Ranh giới phân quyền, báo cáo và cấu hình của toàn hệ thống — docs/06-module-property.md §1."
+        description="Danh sách các chi nhánh đang vận hành. Mỗi chi nhánh có dữ liệu, báo cáo và phân quyền riêng."
         actions={
           <Button onClick={openCreate}>
             <Plus size={16} /> Thêm chi nhánh

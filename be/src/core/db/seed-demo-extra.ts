@@ -461,6 +461,39 @@ async function main() {
     console.log("  KH-DEMO-018 (Cao Thị Vân) — PROSPECT, đang giữ giường A-201-B1 (BT)");
   }
 
+  // ---- Hóa đơn sắp đến hạn (demo mục "Sắp phải đóng tiền" ở Tổng quan) ----
+  async function ensureUpcomingInvoice(ctx: Ctx, customerCode: string, periodCode: string, dueInDays: number, payerName: string) {
+    const existingPeriod = await db.select().from(schema.billingPeriods).where(eq(schema.billingPeriods.code, periodCode));
+    if (existingPeriod.length > 0) return;
+
+    const customer = await findCustomerByCode(ctx, customerCode);
+    if (!customer?.currentContractId) return;
+    const [contract] = await db.select().from(schema.contracts).where(eq(schema.contracts.id, customer.currentContractId));
+    if (!contract) return;
+
+    await issueInvoiceForPeriod(ctx, {
+      contract,
+      periodStart: addDays(now, dueInDays - 30),
+      periodCode,
+      payerName,
+    });
+    // issueInvoiceForPeriod tính dueDate = periodStart + 10 ngày; ghi đè lại
+    // cho đúng ý "còn dueInDays ngày nữa" tính từ hôm nay, thay vì phụ thuộc
+    // vào khoảng cách periodStart→periodTo cố định của hàm dùng chung.
+    await db
+      .update(schema.billingPeriods)
+      .set({ dueDate: isoDate(addDays(now, dueInDays)) })
+      .where(eq(schema.billingPeriods.code, periodCode));
+    const [period] = await db.select().from(schema.billingPeriods).where(eq(schema.billingPeriods.code, periodCode));
+    if (period) {
+      await db.update(schema.invoices).set({ dueDate: isoDate(addDays(now, dueInDays)) }).where(eq(schema.invoices.billingPeriodId, period.id));
+    }
+    console.log(`  Hóa đơn mới sắp đến hạn (${dueInDays} ngày nữa) cho ${customerCode}`);
+  }
+
+  await ensureUpcomingInvoice(td, "KH-DEMO-010", "TD-UPCOMING-1", 3, "Vương Thị Mai");
+  await ensureUpcomingInvoice(bt, "KH-DEMO-014", "BT-UPCOMING-1", 5, "Đặng Thị Quỳnh");
+
   // ---- Thêm lịch sử ca quỹ TD đã đóng (khớp sổ, không lệch) ----
   const existingHistoryTD = await db
     .select()

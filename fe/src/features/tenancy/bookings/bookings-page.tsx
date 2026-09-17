@@ -87,7 +87,7 @@ export function BookingsPage() {
     <div>
       <PageHeader
         title="Đặt chỗ"
-        description="docs/08-module-contracts.md §2 — giữ giường tạm thời trước khi lập hợp đồng."
+        description="Giữ giường tạm thời cho khách trong một khoảng thời gian, trước khi lập hợp đồng chính thức."
         actions={
           <Button
             disabled={!selectedBranchId}

@@ -88,7 +88,7 @@ export function CustomersPage() {
     <div>
       <PageHeader
         title="Khách thuê"
-        description="docs/07-module-customers.md — hồ sơ khách thuê, tìm theo tên/SĐT."
+        description="Hồ sơ khách thuê — tìm nhanh theo tên hoặc số điện thoại, bấm vào một khách để xem đầy đủ thông tin."
         actions={
           <Button
             disabled={!selectedBranchId}

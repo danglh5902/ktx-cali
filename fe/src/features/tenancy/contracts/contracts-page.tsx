@@ -113,7 +113,7 @@ export function ContractsPage() {
     <div>
       <PageHeader
         title="Hợp đồng"
-        description="docs/08-module-contracts.md §3-4 — check-in mở giường + tạo cọc, check-out trả giường."
+        description="Quản lý hợp đồng thuê. Check-in để nhận phòng và ghi nhận cọc; check-out để trả phòng khi khách chuyển đi."
         actions={
           <Button
             disabled={!selectedBranchId}

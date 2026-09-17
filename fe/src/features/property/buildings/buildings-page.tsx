@@ -82,7 +82,7 @@ export function BuildingsPage() {
     <div>
       <PageHeader
         title="Tòa nhà"
-        description={branchName ? `Chi nhánh: ${branchName} — docs/06-module-property.md §2` : "Chọn chi nhánh ở thanh trên để xem tòa nhà"}
+        description={branchName ? `Danh sách tòa nhà thuộc chi nhánh ${branchName}.` : "Chọn chi nhánh ở thanh trên để xem tòa nhà"}
         actions={
           <Button
             disabled={!selectedBranchId}

@@ -73,7 +73,11 @@ interface ApiFetchOptions extends Omit<RequestInit, "body"> {
 
 async function rawRequest(path: string, options: ApiFetchOptions, accessToken?: string): Promise<Response> {
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
+  // Chỉ set Content-Type khi thật sự có body — các action kiểu "check-in",
+  // "phát hành", "duyệt"... gọi api.post(path) không kèm body. Set header
+  // JSON mà thân rỗng khiến Fastify ném FST_ERR_CTP_EMPTY_JSON_BODY (400),
+  // và lỗi đó lại lọt qua thành 500 ở error-handler vì không phải ZodError.
+  if (options.body !== undefined) headers.set("Content-Type", "application/json");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
 
   return fetch(`${API_URL}${path}`, {

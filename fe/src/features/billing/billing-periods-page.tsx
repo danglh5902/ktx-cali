@@ -113,7 +113,7 @@ export function BillingPeriodsPage() {
     <div>
       <PageHeader
         title="Kỳ chốt hóa đơn"
-        description="docs/09-module-billing.md §2 — tạo kỳ rồi sinh hóa đơn hàng loạt cho hợp đồng đang hiệu lực."
+        description="Tạo kỳ tính tiền cho chi nhánh, sau đó hệ thống tự sinh hóa đơn cho toàn bộ hợp đồng đang thuê trong kỳ đó."
         actions={
           <Button
             disabled={!selectedBranchId}

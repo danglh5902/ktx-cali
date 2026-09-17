@@ -78,7 +78,7 @@ export function FloorsPage() {
     <div>
       <PageHeader
         title="Tầng"
-        description="docs/06-module-property.md §3"
+        description="Quản lý các tầng thuộc từng tòa nhà."
         actions={
           <Button
             disabled={!buildingId}
